@@ -59,7 +59,7 @@ mikrotik-panel/
 
 ### 1. **Repoyu klonlayın**
 ```bash
-git clone <repo-url>
+git clone [<repo-url>](https://github.com/mratsag/mikrotik-web)
 cd mikrotik-panel
 ```
 
