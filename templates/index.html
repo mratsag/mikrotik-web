@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+
+{% block title %}NAT Kuralları - MikroTik{% endblock %}
+{% block page_title %}MikroTik NAT Yönetimi{% endblock %}
+{% block page_subtitle %}Port yönlendirme kurallarını kolayca yönetin{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-title">
+        <i class="fas fa-plus-circle"></i>
+        Yeni Port Yönlendirme Kuralı
+    </div>
+    <form action="/add_rule" method="post">
+        <div class="form-row">
+            <div class="form-group">
+                <label for="name">
+                    <i class="fas fa-tag"></i> Kural Adı
+                </label>
+                <input type="text" id="name" name="name" required placeholder="Örn: Web Server">
+            </div>
+            <div class="form-group">
+                <label for="external_port">
+                    <i class="fas fa-door-open"></i> Dış Port
+                </label>
+                <input type="number" id="external_port" name="external_port" required placeholder="80">
+            </div>
+            <div class="form-group">
+                <label for="internal_ip">
+                    <i class="fas fa-server"></i> Hedef IP Adresi
+                </label>
+                <input type="text" id="internal_ip" name="internal_ip" required placeholder="192.168.1.100">
+            </div>
+            <div class="form-group">
+                <label for="internal_port">
+                    <i class="fas fa-door-closed"></i> Hedef Port
+                </label>
+                <input type="number" id="internal_port" name="internal_port" required placeholder="8080">
+            </div>
+        </div>
+        <button type="submit" class="btn btn-primary">
+            <i class="fas fa-plus"></i> Kural Ekle
+        </button>
+    </form>
+</div>
+
+<div class="card">
+    <div class="card-title">
+        <i class="fas fa-list"></i>
+        Mevcut NAT Kuralları
+    </div>
+    
+    {% if rules %}
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th><i class="fas fa-link"></i> Chain</th>
+                    <th><i class="fas fa-map-marker-alt"></i> Kaynak Adres</th>
+                    <th><i class="fas fa-bullseye"></i> Hedef Adres</th>
+                    <th><i class="fas fa-layer-group"></i> Protokol</th>
+                    <th><i class="fas fa-door-open"></i> Hedef Port</th>
+                    <th><i class="fas fa-cogs"></i> Aksiyon</th>
+                    <th><i class="fas fa-comment"></i> Yorum</th>
+                    <th><i class="fas fa-tools"></i> İşlemler</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for rule in rules %}
+                <tr>
+                    <td>{{ rule.get('chain', '') }}</td>
+                    <td>{{ rule.get('src-address', '-') }}</td>
+                    <td>{{ rule.get('dst-address', '-') }}</td>
+                    <td>
+                        {% if rule.get('protocol') %}
+                            <span class="badge badge-{{ rule.get('protocol', '').lower() }}">
+                                {{ rule.get('protocol', '').upper() }}
+                            </span>
+                        {% else %}
+                            -
+                        {% endif %}
+                    </td>
+                    <td>{{ rule.get('dst-port', '-') }}</td>
+                    <td>
+                        {% if rule.get('action') %}
+                            <span class="badge badge-{{ rule.get('action', '').lower() }}">
+                                {{ rule.get('action', '') }}
+                            </span>
+                        {% else %}
+                            -
+                        {% endif %}
+                    </td>
+                    <td>{{ rule.get('comment', '-') }}</td>
+                    <td>
+                        <div class="action-buttons">
+                            <form action="/edit_rule" method="get" style="display:inline;">
+                                <input type="hidden" name="rule_id" value="{{ rule['.id'] }}">
+                                <button type="submit" class="btn btn-edit">
+                                    <i class="fas fa-edit"></i> Düzenle
+                                </button>
+                            </form>
+                            <form action="/delete_rule" method="post" style="display:inline;" 
+                                  onsubmit="return confirm('Bu kuralı silmek istediğinizden emin misiniz?')">
+                                <input type="hidden" name="rule_id" value="{{ rule['.id'] }}">
+                                <button type="submit" class="btn btn-delete">
+                                    <i class="fas fa-trash"></i> Sil
+                                </button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div style="text-align: center; padding: 40px; color: #666;">
+        <i class="fas fa-inbox" style="font-size: 4rem; color: #ddd; margin-bottom: 20px; display: block;"></i>
+        <h3>Henüz NAT kuralı bulunmuyor</h3>
+        <p>Yukarıdaki formu kullanarak ilk kuralınızı ekleyebilirsiniz.</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

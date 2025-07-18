@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}MikroTik Yönetim Paneli{% endblock %}</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/base.css">
+    
+    <!-- Sayfa özel CSS dosyaları -->
+    {% block extra_css_files %}{% endblock %}
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1><i class="fas fa-network-wired"></i> {% block page_title %}MikroTik Yönetim Paneli{% endblock %}</h1>
+            <p>{% block page_subtitle %}Ağ cihazlarınızı kolayca yönetin{% endblock %}</p>
+            
+            <!-- Kullanıcı Bilgileri -->
+            {% if session.mikrotik_user %}
+            <div style="margin-top: 20px; background: rgba(255,255,255,0.2); padding: 10px 20px; border-radius: 25px; display: inline-block;">
+                <i class="fas fa-user-cog"></i> 
+                <strong>{{ session.user_name }}@{{ session.system_name or 'MikroTik' }}</strong>
+                <span style="opacity: 0.8; margin-left: 10px;">({{ session.mikrotik_host }})</span>
+                <a href="{{ url_for('logout') }}" style="color: white; margin-left: 15px; text-decoration: none; opacity: 0.8;" 
+                   onclick="return confirm('Çıkış yapmak istediğinizden emin misiniz?')">
+                    <i class="fas fa-sign-out-alt"></i> Çıkış
+                </a>
+            </div>
+            {% endif %}
+        </div>
+
+        <div class="nav-buttons">
+            <a href="/" class="nav-btn {% if request.endpoint == 'index' %}active{% endif %}">
+                <i class="fas fa-home"></i> NAT Kuralları
+            </a>
+            <a href="/ip_monitor" class="nav-btn {% if request.endpoint == 'ip_monitor' %}active{% endif %}">
+                <i class="fas fa-chart-line"></i> IP Monitör
+            </a>
+            <a href="/profile" class="nav-btn {% if request.endpoint == 'profile' %}active{% endif %}">
+                <i class="fas fa-user-cog"></i> Profil
+            </a>
+        </div>
+
+        <!-- Flash Messages -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <div style="margin-bottom: 30px;">
+                    {% for category, message in messages %}
+                        <div class="alert alert-{{ category }}">
+                            {% if category == 'success' %}
+                                <i class="fas fa-check-circle"></i>
+                            {% elif category == 'error' %}
+                                <i class="fas fa-exclamation-circle"></i>
+                            {% elif category == 'warning' %}
+                                <i class="fas fa-exclamation-triangle"></i>
+                            {% else %}
+                                <i class="fas fa-info-circle"></i>
+                            {% endif %}
+                            {{ message }}
+                        </div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        {% endwith %}
+
+        {% block content %}{% endblock %}
+    </div>
+
+    <div class="footer">
+        <div class="footer-content">
+            <div class="footer-logo">
+                <i class="fas fa-code"></i>
+                MikroTik Panel v1.0
+            </div>
+            <div class="footer-divider"></div>
+            <div class="footer-designer">
+                <i class="fas fa-heart"></i>
+                Tasarlayan: <strong>Murat Sağ</strong>
+            </div>
+        </div>
+        <div class="footer-social">
+            <a href="https://github.com/mratsag" class="social-btn" title="GitHub">
+                <i class="fab fa-github"></i>
+            </a>
+            <a href="www.linkedin.com/in/murat-sağ" class="social-btn" title="LinkedIn">
+                <i class="fab fa-linkedin"></i>
+            </a>
+            <a href="https://www.muratsag.com" class="social-btn" title="Website" target="_blank" rel="noopener">
+                <i class="fas fa-globe"></i>
+            </a>
+        </div>
+    </div>
+
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

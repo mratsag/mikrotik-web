@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+
+{% block title %}NAT Kuralı Düzenle - MikroTik{% endblock %}
+{% block page_title %}NAT Kuralı Düzenle{% endblock %}
+{% block page_subtitle %}Mevcut kuralın ayarlarını güncelleyin{% endblock %}
+
+{% block extra_css_files %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/edit_rule.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-title">
+        <i class="fas fa-cogs"></i>
+        Kural Ayarları
+    </div>
+
+    <div class="protocol-info">
+        <h4><i class="fas fa-info-circle"></i> Bilgi</h4>
+        <p>Bu formu kullanarak mevcut NAT kuralınızın ayarlarını güncelleyebilirsiniz. Boş bırakılan alanlar değiştirilmeyecektir.</p>
+    </div>
+
+    <form method="post" action="/edit_rule" id="editForm">
+        <input type="hidden" name="rule_id" value="{{ rule['.id'] }}" />
+
+        <div class="field-group">
+            <h3><i class="fas fa-network-wired"></i> Ağ Ayarları</h3>
+            <div class="form-grid">
+                <div class="form-group">
+                    <label for="chain">
+                        <i class="fas fa-link"></i> Chain
+                    </label>
+                    <input type="text" id="chain" name="chain" value="{{ rule.get('chain', '') }}" />
+                    <div class="input-help">
+                        <i class="fas fa-question-circle"></i>
+                        Genellikle 'dstnat' veya 'srcnat'
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="protocol">
+                        <i class="fas fa-layer-group"></i> Protokol
+                    </label>
+                    <input type="text" id="protocol" name="protocol" value="{{ rule.get('protocol', '') }}" />
+                    <div class="input-help">
+                        <i class="fas fa-question-circle"></i>
+                        TCP, UDP veya ALL
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="src_address">
+                        <i class="fas fa-map-marker-alt"></i> Kaynak Adres
+                    </label>
+                    <input type="text" id="src_address" name="src_address" value="{{ rule.get('src-address', '') }}" />
+                    <div class="input-help">
+                        <i class="fas fa-question-circle"></i>
+                        Boş bırakılabilir (tüm adresler)
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="dst_address">
+                        <i class="fas fa-bullseye"></i> Hedef Adres
+                    </label>
+                    <input type="text" id="dst_address" name="dst_address" value="{{ rule.get('dst-address', '') }}" />
+                    <div class="input-help">
+                        <i class="fas fa-question-circle"></i>
+                        Boş bırakılabilir (tüm adresler)
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="field-group">
+            <h3><i class="fas fa-door-open"></i> Port ve Aksiyon</h3>
+            <div class="form-grid">
+                <div class="form-group">
+                    <label for="dst_port">
+                        <i class="fas fa-door-open"></i> Hedef Port
+                    </label>
+                    <input type="text" id="dst_port" name="dst_port" value="{{ rule.get('dst-port', '') }}" />
+                    <div class="input-help">
+                        <i class="fas fa-question-circle"></i>
+                        Port numarası veya port aralığı
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="action">
+                        <i class="fas fa-cogs"></i> Aksiyon
+                    </label>
+                    <input type="text" id="action" name="action" value="{{ rule.get('action', '') }}" />
+                    <div class="input-help">
+                        <i class="fas fa-question-circle"></i>
+                        dst-nat, src-nat, masquerade vb.
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="form-group full-width">
+            <label for="comment">
+                <i class="fas fa-comment"></i> Yorum
+            </label>
+            <input type="text" id="comment" name="comment" value="{{ rule.get('comment', '') }}" />
+            <div class="input-help">
+                <i class="fas fa-question-circle"></i>
+                Bu kurala dair açıklama veya not
+            </div>
+        </div>
+
+        <div class="loading" id="loading">
+            <i class="fas fa-spinner fa-2x"></i>
+            <p>Güncelleniyor...</p>
+        </div>
+
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary">
+                <i class="fas fa-save"></i> Değişiklikleri Kaydet
+            </button>
+            <a href="/" class="btn btn-secondary">
+                <i class="fas fa-times"></i> İptal
+            </a>
+        </div>
+    </form>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/main.js') }}"></script>
+<script src="{{ url_for('static', filename='js/edit_rule.js') }}"></script>
+{% endblock %}

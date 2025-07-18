@@ -1,0 +1,177 @@
+{% extends "base.html" %}
+
+{% block title %}Profil - MikroTik{% endblock %}
+{% block page_title %}Kullanıcı Profili{% endblock %}
+{% block page_subtitle %}MikroTik sistem bilgilerinizi görüntüleyin{% endblock %}
+
+{% block extra_css_files %}
+<link rel="stylesheet" href="/static/css/profile.css">
+{% endblock %}
+
+{% block content %}
+<!-- Bağlantı Durumu -->
+<div class="connection-info">
+    <div class="connection-status">
+        <i class="fas fa-check-circle"></i> MikroTik'e Başarıyla Bağlı
+    </div>
+    <div class="connection-details">
+        {{ session.mikrotik_host }} - {{ session.user_name }}@{{ system_info.identity or 'MikroTik' }}
+    </div>
+</div>
+
+<!-- Profil Kartı -->
+<div class="profile-card">
+    <div class="profile-avatar">
+        <i class="fas fa-user-cog"></i>
+    </div>
+    <div class="profile-name">{{ session.user_name }}</div>
+    <div class="profile-role">
+        <i class="fas fa-network-wired"></i> MikroTik Kullanıcısı
+    </div>
+</div>
+
+<!-- Sistem Bilgileri -->
+<div class="card">
+    <div class="card-title">
+        <i class="fas fa-server"></i>
+        MikroTik Sistem Bilgileri
+    </div>
+    
+    <div class="system-section">
+        <div class="system-title">
+            <i class="fas fa-info-circle"></i>
+            Cihaz Bilgileri
+        </div>
+        
+        <div class="info-grid">
+            <div class="info-item">
+                <div class="info-label">Sistem Adı</div>
+                <div class="info-value">{{ system_info.identity or 'Bilinmiyor' }}</div>
+            </div>
+            
+            <div class="info-item">
+                <div class="info-label">Board</div>
+                <div class="info-value">{{ system_info.board_name or 'Bilinmiyor' }}</div>
+            </div>
+            
+            <div class="info-item">
+                <div class="info-label">RouterOS Sürümü</div>
+                <div class="info-value">{{ system_info.version or 'Bilinmiyor' }}</div>
+            </div>
+            
+            <div class="info-item">
+                <div class="info-label">Mimari</div>
+                <div class="info-value">{{ system_info.architecture or 'Bilinmiyor' }}</div>
+            </div>
+            
+            <div class="info-item">
+                <div class="info-label">CPU</div>
+                <div class="info-value">{{ system_info.cpu or 'Bilinmiyor' }}</div>
+            </div>
+            
+            <div class="info-item">
+                <div class="info-label">CPU Sayısı</div>
+                <div class="info-value">{{ system_info.cpu_count or 'Bilinmiyor' }}</div>
+            </div>
+            
+            <div class="info-item">
+                <div class="info-label">Toplam RAM</div>
+                <div class="info-value">{{ (system_info.memory|int / (1024*1024))|round|int if system_info.memory else 'Bilinmiyor' }} MB</div>
+            </div>
+            
+            <div class="info-item">
+                <div class="info-label">Uptime</div>
+                <div class="info-value">{{ system_info.uptime or 'Bilinmiyor' }}</div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="system-section">
+        <div class="system-title">
+            <i class="fas fa-clock"></i>
+            Zaman Bilgileri
+        </div>
+        
+        <div class="info-grid">
+            <div class="info-item">
+                <div class="info-label">Tarih</div>
+                <div class="info-value">{{ system_info.date or 'Bilinmiyor' }}</div>
+            </div>
+            
+            <div class="info-item">
+                <div class="info-label">Saat</div>
+                <div class="info-value">{{ system_info.current_time or 'Bilinmiyor' }}</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Bağlantı Bilgileri -->
+<div class="card">
+    <div class="card-title">
+        <i class="fas fa-info-circle"></i>
+        Bağlantı Bilgileri
+    </div>
+    
+    <div class="activity-section">
+        <div class="activity-card">
+            <div class="activity-icon">
+                <i class="fas fa-server"></i>
+            </div>
+            <div class="activity-value">{{ session.mikrotik_host }}</div>
+            <div class="activity-label">MikroTik IP</div>
+        </div>
+        
+        <div class="activity-card">
+            <div class="activity-icon">
+                <i class="fas fa-user"></i>
+            </div>
+            <div class="activity-value">{{ session.user_name }}</div>
+            <div class="activity-label">Kullanıcı Adı</div>
+        </div>
+        
+        <div class="activity-card">
+            <div class="activity-icon">
+                <i class="fas fa-clock"></i>
+            </div>
+            <div class="activity-value" id="sessionTime">--:--</div>
+            <div class="activity-label">Oturum Süresi</div>
+        </div>
+        
+        <div class="activity-card">
+            <div class="activity-icon">
+                <i class="fas fa-shield-check"></i>
+            </div>
+            <div class="activity-value">
+                <span class="status-badge">Aktif</span>
+            </div>
+            <div class="activity-label">Bağlantı Durumu</div>
+        </div>
+    </div>
+</div>
+
+<!-- Güvenlik İpuçları -->
+<div class="card">
+    <div class="card-title">
+        <i class="fas fa-lightbulb"></i>
+        MikroTik Güvenlik İpuçları
+    </div>
+    
+    <div style="background: #e3f2fd; border-left: 4px solid #2196f3; padding: 20px; border-radius: 5px;">
+        <h4 style="color: #1976d2; margin-bottom: 15px;">Güvenlik Önerileri</h4>
+        <ul style="color: #555; margin-left: 20px;">
+            <li>Default admin kullanıcısının şifresini değiştirin</li>
+            <li>Gereksiz servisleri kapatın</li>
+            <li>Firewall kurallarını düzenli kontrol edin</li>
+            <li>RouterOS'u güncel tutun</li>
+            <li>API erişimini kısıtlayın</li>
+            <li>Strong encryption kullanın</li>
+        </ul>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/main.js') }}"></script>
+<script src="{{ url_for('static', filename='js/profile.js') }}"></script>
+{% endblock %}

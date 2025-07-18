@@ -1,0 +1,356 @@
+{% extends "base.html" %}
+
+{% block title %}IP Adres Monitörü - MikroTik{% endblock %}
+{% block page_title %}IP Adres Monitörü{% endblock %}
+{% block page_subtitle %}Ağ üzerindeki IP adreslerini takip edin{% endblock %}
+
+{% block extra_css_files %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/ip_monitor.css') }}">
+{% endblock %}
+
+{% block content %}
+<!-- İstatistikler -->
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-icon used">
+            <i class="fas fa-wifi"></i>
+        </div>
+        <div class="stat-number">{{ used_ips|length }}</div>
+        <div class="stat-label">Toplam Kullanılan IP</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon available">
+            <i class="fas fa-circle"></i>
+        </div>
+        <div class="stat-number">
+            {% set total_available = 0 %}
+            {% for network_name, analysis in network_analysis.items() %}
+                {% set total_available = total_available + analysis.available_count %}
+            {% endfor %}
+            {{ total_available }}
+        </div>
+        <div class="stat-label">Toplam Kullanılabilir IP</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon dhcp">
+            <i class="fas fa-server"></i>
+        </div>
+        <div class="stat-number">{{ dhcp_leases|length }}</div>
+        <div class="stat-label">DHCP Lease</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon arp">
+            <i class="fas fa-list"></i>
+        </div>
+        <div class="stat-number">{{ arp_table|length }}</div>
+        <div class="stat-label">ARP Girişi</div>
+    </div>
+</div>
+
+<!-- Manual Refresh Button -->
+<div style="text-align: center; margin-bottom: 20px;">
+    <button onclick="window.fetchIPMonitorData && window.fetchIPMonitorData()" class="btn btn-primary">
+        <i class="fas fa-sync-alt"></i> Şimdi Yenile
+    </button>
+    <span style="margin-left: 15px; color: #666; font-size: 0.9rem;">
+        <i class="fas fa-clock"></i> Otomatik güncelleme: 15 saniye
+    </span>
+</div>
+
+<!-- DHCP Lease Tablosu -->
+<div class="card">
+    <div class="card-title">
+        <i class="fas fa-server"></i>
+        DHCP Lease'leri
+        <div style="margin-left: auto;">
+            <span style="background: #e3f2fd; color: #1976d2; padding: 5px 10px; border-radius: 15px; font-size: 0.8rem;">
+                <i class="fas fa-info-circle"></i> Gerçek zamanlı
+            </span>
+        </div>
+    </div>
+    <div class="search-box">
+        <input type="text" id="dhcpSearch" placeholder="IP adresi, MAC adresi veya hostname ile ara...">
+        <i class="fas fa-search"></i>
+    </div>
+    <div class="table-container">
+        <table id="dhcpTable">
+            <thead>
+                <tr>
+                    <th><i class="fas fa-globe"></i> IP Adresi</th>
+                    <th><i class="fas fa-ethernet"></i> MAC Adresi</th>
+                    <th><i class="fas fa-desktop"></i> Hostname</th>
+                    <th><i class="fas fa-clock"></i> Lease Süresi</th>
+                    <th><i class="fas fa-info-circle"></i> Durum</th>
+                    <th><i class="fas fa-calendar"></i> Son Görülme</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for lease in dhcp_leases %}
+                <tr>
+                    <td><strong>{{ lease.get('address', '-') }}</strong></td>
+                    <td>{{ lease.get('mac-address', '-') }}</td>
+                    <td>{{ lease.get('host-name', '-') }}</td>
+                    <td>{{ lease.get('lease-time', '-') }}</td>
+                    <td>
+                        {% if lease.get('status') == 'bound' %}
+                            <span class="status-badge status-bound">Aktif</span>
+                        {% else %}
+                            <span class="status-badge status-inactive">{{ lease.get('status', 'Bilinmiyor') }}</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ lease.get('last-seen', '-') }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- ARP Tablosu -->
+<div class="card">
+    <div class="card-title">
+        <i class="fas fa-list"></i>
+        ARP Tablosu
+        <div style="margin-left: auto;">
+            <span style="background: #f3e5f5; color: #7b1fa2; padding: 5px 10px; border-radius: 15px; font-size: 0.8rem;">
+                <i class="fas fa-info-circle"></i> Canlı veri
+            </span>
+        </div>
+    </div>
+    <div class="search-box">
+        <input type="text" id="arpSearch" placeholder="IP adresi veya MAC adresi ile ara...">
+        <i class="fas fa-search"></i>
+    </div>
+    <div class="table-container">
+        <table id="arpTable">
+            <thead>
+                <tr>
+                    <th><i class="fas fa-globe"></i> IP Adresi</th>
+                    <th><i class="fas fa-ethernet"></i> MAC Adresi</th>
+                    <th><i class="fas fa-network-wired"></i> Interface</th>
+                    <th><i class="fas fa-info-circle"></i> Durum</th>
+                    <th><i class="fas fa-comment"></i> Yorum</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for arp in arp_table %}
+                <tr>
+                    <td><strong>{{ arp.get('address', '-') }}</strong></td>
+                    <td>{{ arp.get('mac-address', '-') }}</td>
+                    <td>{{ arp.get('interface', '-') }}</td>
+                    <td>
+                        {% if arp.get('complete') == 'true' %}
+                            <span class="status-badge status-active">Aktif</span>
+                        {% else %}
+                            <span class="status-badge status-inactive">Pasif</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ arp.get('comment', '-') }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Ağ Kullanım Analizi -->
+<div class="card">
+    <div class="card-title">
+        <i class="fas fa-chart-pie"></i>
+        Ağ Kullanım Analizi
+        <div style="margin-left: auto;">
+            <span style="background: #e8f5e8; color: #388e3c; padding: 5px 10px; border-radius: 15px; font-size: 0.8rem;">
+                <i class="fas fa-sync"></i> Otomatik tarama
+            </span>
+        </div>
+    </div>
+    
+    <div class="network-grid">
+        {% for network_name, analysis in network_analysis.items() %}
+        <div class="network-card">
+            <div class="network-header">
+                <div class="network-title">
+                    <i class="fas fa-sitemap"></i>
+                    {{ network_name }} Alt Ağı
+                </div>
+                <div class="network-summary">
+                    <div class="summary-item used">
+                        <i class="fas fa-circle"></i>
+                        {{ analysis.used_count }} kullanılan
+                    </div>
+                    <div class="summary-item available">
+                        <i class="fas fa-circle"></i>
+                        {{ analysis.available_count }} boş
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Progress Bar -->
+            <div class="network-progress">
+                <div class="progress-bar" style="width: {{ analysis.usage_percentage }}%"></div>
+            </div>
+            <div style="text-align: center; font-size: 0.9rem; color: #666; margin-bottom: 20px;">
+                %{{ analysis.usage_percentage }} kullanım oranı 
+                <span style="font-size: 0.8rem; color: #999;">
+                    ({{ analysis.used_count }}/{{ analysis.total_count }})
+                </span>
+            </div>
+            
+            {% if analysis.used_ips %}
+            <div class="used-ips-section">
+                <div class="used-ips-title">
+                    <i class="fas fa-wifi"></i>
+                    Kullanılan IP Adresleri ({{ analysis.used_count }})
+                </div>
+                <div class="used-ip-list">
+                    {% for ip_info in analysis.used_ips %}
+                    <div class="used-ip-item">
+                        <div class="ip-address">
+                            {{ ip_info.ip }}
+                            <i class="fas fa-copy" style="font-size: 0.8rem; color: #999; cursor: pointer;" title="Kopyala"></i>
+                        </div>
+                        <div class="ip-details">
+                            <div class="ip-detail">
+                                <div class="detail-label">Tip</div>
+                                <div class="detail-value">
+                                    <span class="type-badge type-{{ ip_info.type.lower() }}">
+                                        {{ ip_info.type }}
+                                    </span>
+                                </div>
+                            </div>
+                            <div class="ip-detail">
+                                <div class="detail-label">Hostname</div>
+                                <div class="detail-value {{ 'empty' if not ip_info.hostname }}">
+                                    {{ ip_info.hostname or '-' }}
+                                </div>
+                            </div>
+                            <div class="ip-detail">
+                                <div class="detail-label">MAC Adres</div>
+                                <div class="detail-value {{ 'empty' if not ip_info.mac }}">
+                                    {{ ip_info.mac or '-' }}
+                                </div>
+                            </div>
+                            <div class="ip-detail">
+                                <div class="detail-label">Durum</div>
+                                <div class="detail-value {{ 'empty' if not ip_info.status }}">
+                                    {{ ip_info.status or '-' }}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+            
+            {% if analysis.available_count > 0 %}
+            <div class="available-summary">
+                <div class="available-count">{{ analysis.available_count }}</div>
+                <div class="available-text">kullanılabilir IP adresi mevcut</div>
+                {% if analysis.available_count > 50 %}
+                <div style="font-size: 0.8rem; margin-top: 5px; opacity: 0.8;">
+                    <i class="fas fa-check-circle"></i> Bol miktarda IP mevcut
+                </div>
+                {% elif analysis.available_count < 10 %}
+                <div style="font-size: 0.8rem; margin-top: 5px; opacity: 0.8; color: #e74c3c;">
+                    <i class="fas fa-exclamation-triangle"></i> IP adresleri azalıyor
+                </div>
+                {% endif %}
+            </div>
+            {% endif %}
+            
+            {% if analysis.used_count == 0 and analysis.available_count == 0 %}
+            <div class="empty-network">
+                <i class="fas fa-network-wired"></i>
+                <h4>Bu ağda IP kullanımı bulunamadı</h4>
+                <p>Ağ yapılandırması kontrol edilebilir.</p>
+            </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<!-- Network Scan Tools -->
+<div class="card">
+    <div class="card-title">
+        <i class="fas fa-tools"></i>
+        Ağ Tarama Araçları
+    </div>
+    
+    <div style="display: flex; gap: 15px; flex-wrap: wrap; align-items: center;">
+        <button onclick="scanNetwork('192.168.254')" class="btn btn-secondary">
+            <i class="fas fa-search"></i> 192.168.254.x Tarama
+        </button>
+        <button onclick="scanNetwork('10.10.10')" class="btn btn-secondary">
+            <i class="fas fa-search"></i> 10.10.10.x Tarama  
+        </button>
+        <button onclick="scanNetwork('20.20.20')" class="btn btn-secondary">
+            <i class="fas fa-search"></i> 20.20.20.x Tarama
+        </button>
+        <div style="margin-left: auto; color: #666; font-size: 0.9rem;">
+            <i class="fas fa-info-circle"></i>
+            <span id="scan-status">Tarama bekleniyor...</span>
+        </div>
+    </div>
+    
+    <div id="scan-results" style="margin-top: 20px; display: none;">
+        <h4 style="color: #333; margin-bottom: 15px;">Tarama Sonuçları:</h4>
+        <div id="scan-results-content"></div>
+    </div>
+</div>
+
+<script>
+// Global fonksiyon - manuel refresh için
+window.fetchIPMonitorData = function() {
+    const event = new CustomEvent('manualRefresh');
+    document.dispatchEvent(event);
+};
+
+// Ağ tarama fonksiyonu
+async function scanNetwork(network) {
+    const statusElement = document.getElementById('scan-status');
+    const resultsElement = document.getElementById('scan-results');
+    const resultsContent = document.getElementById('scan-results-content');
+    
+    statusElement.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Ağ taranıyor...';
+    
+    try {
+        const response = await fetch(`/api/ping_network/${network}`);
+        const data = await response.json();
+        
+        if (data.success) {
+            statusElement.innerHTML = `<i class="fas fa-check"></i> ${network}.x ağında ${data.count} aktif IP bulundu`;
+            
+            resultsContent.innerHTML = `
+                <div style="background: #e8f5e8; padding: 15px; border-radius: 10px; border-left: 4px solid #27ae60;">
+                    <strong>Bulunan Aktif IP'ler:</strong><br>
+                    ${data.active_ips.map(ip => `<span style="font-family: monospace; background: white; padding: 2px 6px; margin: 2px; border-radius: 4px; display: inline-block;">${ip}</span>`).join('')}
+                </div>
+            `;
+            resultsElement.style.display = 'block';
+            
+            // 10 saniye sonra sonuçları gizle
+            setTimeout(() => {
+                resultsElement.style.display = 'none';
+            }, 10000);
+            
+        } else {
+            statusElement.innerHTML = `<i class="fas fa-times"></i> Hata: ${data.error}`;
+        }
+    } catch (error) {
+        statusElement.innerHTML = `<i class="fas fa-times"></i> Tarama hatası: ${error.message}`;
+    }
+    
+    // 5 saniye sonra status'u sıfırla
+    setTimeout(() => {
+        statusElement.innerHTML = '<i class="fas fa-info-circle"></i> Tarama bekleniyor...';
+    }, 5000);
+}
+</script>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/main.js') }}"></script>
+<script src="{{ url_for('static', filename='js/ip_monitor.js') }}"></script>
+{% endblock %}

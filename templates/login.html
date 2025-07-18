@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Girişi - MikroTik Panel</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/login.css">
+</head>
+<body>
+    <!-- Animated Background -->
+    <div class="particles">
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+    </div>
+
+    <div class="login-container">
+        <div class="login-header">
+            <div class="login-logo">
+                <i class="fas fa-shield-alt"></i>
+            </div>
+            <h1 class="login-title">MikroTik Girişi</h1>
+            <p class="login-subtitle">MikroTik cihazınıza bağlanın</p>
+        </div>
+
+        <!-- Flash Messages -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }}">
+                        {% if category == 'success' %}
+                            <i class="fas fa-check-circle"></i>
+                        {% elif category == 'error' %}
+                            <i class="fas fa-exclamation-circle"></i>
+                        {% elif category == 'warning' %}
+                            <i class="fas fa-exclamation-triangle"></i>
+                        {% else %}
+                            <i class="fas fa-info-circle"></i>
+                        {% endif %}
+                        {{ message }}
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <!-- Demo Credentials -->
+        <div class="demo-credentials">
+            <h4><i class="fas fa-key"></i> MikroTik Giriş Bilgileri</h4>
+            <p>MikroTik cihazınızın kullanıcı adı ve şifresini girin</p>
+            <p><strong>Örnek:</strong> admin / şifreniz</p>
+        </div>
+
+        <form method="POST" id="loginForm">
+            <div class="form-group">
+                <label for="mikrotik_host" class="form-label">
+                    <i class="fas fa-server"></i> MikroTik IP Adresi
+                </label>
+                <div style="position: relative;">
+                    <input type="text" 
+                           id="mikrotik_host" 
+                           name="mikrotik_host" 
+                           class="form-input" 
+                           placeholder="192.168.254.142"
+                           value="192.168.254.142"
+                           required>
+                    <i class="fas fa-server form-icon"></i>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="username" class="form-label">
+                    <i class="fas fa-user"></i> MikroTik Kullanıcı Adı
+                </label>
+                <div style="position: relative;">
+                    <input type="text" 
+                           id="username" 
+                           name="username" 
+                           class="form-input" 
+                           placeholder="admin"
+                           required
+                           autocomplete="username">
+                    <i class="fas fa-user form-icon"></i>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="password" class="form-label">
+                    <i class="fas fa-lock"></i> MikroTik Şifresi
+                </label>
+                <div style="position: relative;">
+                    <input type="password" 
+                           id="password" 
+                           name="password" 
+                           class="form-input" 
+                           placeholder="MikroTik şifrenizi girin"
+                           required
+                           autocomplete="current-password">
+                    <i class="fas fa-lock form-icon"></i>
+                </div>
+            </div>
+
+            <div class="remember-forgot">
+                <label class="remember-me">
+                    <input type="checkbox" name="remember_me">
+                    Beni Hatırla
+                </label>
+                <a href="#" class="forgot-password">Şifremi Unuttum</a>
+            </div>
+
+            <button type="submit" class="login-btn" id="loginButton">
+                <span class="normal-text">
+                    <i class="fas fa-sign-in-alt"></i>
+                    Giriş Yap
+                </span>
+                <span class="loading">
+                    <i class="fas fa-spinner"></i>
+                    Giriş Yapılıyor...
+                </span>
+            </button>
+        </form>
+
+        <div class="system-info">
+            <strong>MikroTik Panel v1.0</strong><br>
+            Tasarlayan: <strong>Murat Sağ</strong> ❤️
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/login.js') }}"></script>
+</body>
+</html>
