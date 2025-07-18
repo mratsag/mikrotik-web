@@ -59,7 +59,7 @@ mikrotik-panel/
 
 ### 1. **Repoyu klonlayın**
 ```bash
-dnf install -y python
+dnf install python3-pip -y
 git clone https://github.com/mratsag/mikrotik-web
 cd mikrotik-web
 
