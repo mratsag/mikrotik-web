@@ -59,12 +59,15 @@ mikrotik-panel/
 
 ### 1. **Repoyu klonlayın**
 ```bash
+dnf install -y python
 git clone https://github.com/mratsag/mikrotik-web
 cd mikrotik-web
+
 ```
 
 ### 2. **Python sanal ortamı oluşturun**
 ```bash
+
 python -m venv venv
 
 # Windows
