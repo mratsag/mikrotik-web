@@ -60,7 +60,7 @@ mikrotik-panel/
 ### 1. **Repoyu klonlayın**
 ```bash
 git clone https://github.com/mratsag/mikrotik-web
-cd mikrotik-panel
+cd mikrotik-web
 ```
 
 ### 2. **Python sanal ortamı oluşturun**
