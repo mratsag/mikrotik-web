@@ -57,17 +57,37 @@ mikrotik-panel/
 
 ## 🛠️ Kurulum
 
-# Bu komut çalıştırıldığında:
+# 1. Scripti çalıştır
 curl -sSL https://raw.githubusercontent.com/KULLANICI/mikrotik-panel/main/install.sh | sudo bash
 
-# 1. GitHub'dan tüm kodları indirecek
-# 2. Sistem paketlerini kuracak
-# 3. Python ortamını hazırlayacak
-# 4. Flask uygulamasını kuracak
-# 5. Systemd servisini aktifleştirecek
-# 6. Nginx proxy kuracak
-# 7. Firewall ayarlarını yapacak
-# 8. http://SERVER_IP:5050 adresinde çalışır hale getirecek
+# 2. MikroTik bilgileri sor
+📡 MikroTik Router IP Adresi: 192.168.1.1
+🚪 MikroTik API Portu: 8728
+🌐 Web Panel Portu: 5050
+🔐 API bağlantısını test etmek istiyor musunuz? [y/N]: y
+   Kullanıcı Adı: admin
+   Şifre: ********
+   ✅ MikroTik API portu erişilebilir
+
+# 3. Yapılandırma özeti
+📋 MikroTik Yapılandırma Özeti:
+   🏠 MikroTik IP Adresi : 192.168.1.1
+   🚪 MikroTik API Port  : 8728
+   🌐 Web Panel Portu    : 5050
+   🔗 Panel Erişim URL   : http://SERVER_IP:5050
+
+Bu ayarlarla kuruluma devam etmek istiyor musunuz? [Y/n]: Y
+
+# 4. Otomatik kurulum başlar
+========== ADIM 1: SİSTEM KONTROLÜ ==========
+========== ADIM 2: PAKET KURULUMU ==========
+========== ADIM 3: KAYNAK DOSYALAR =========
+========== ADIM 4: KULLANICI VE DİZİN ======
+========== ADIM 5: PYTHON ORTAMI ===========
+========== ADIM 6: SİSTEM SERVİSLERİ =======
+========== ADIM 7: SERVİS BAŞLATMA =========
+========== ADIM 8: DOĞRULAMA ===============
+========== ADIM 9: RAPOR ===================
 
 
 ### Manuel kurulum
