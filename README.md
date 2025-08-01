@@ -57,6 +57,20 @@ mikrotik-panel/
 
 ## 🛠️ Kurulum
 
+# Bu komut çalıştırıldığında:
+curl -sSL https://raw.githubusercontent.com/KULLANICI/mikrotik-panel/main/install.sh | sudo bash
+
+# 1. GitHub'dan tüm kodları indirecek
+# 2. Sistem paketlerini kuracak
+# 3. Python ortamını hazırlayacak
+# 4. Flask uygulamasını kuracak
+# 5. Systemd servisini aktifleştirecek
+# 6. Nginx proxy kuracak
+# 7. Firewall ayarlarını yapacak
+# 8. http://SERVER_IP:5050 adresinde çalışır hale getirecek
+
+
+### Manuel kurulum
 ### 1. **Repoyu klonlayın**
 ```bash
 dnf install python3-pip -y
