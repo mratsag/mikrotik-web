@@ -1,0 +1,501 @@
+{% extends "base.html" %}
+
+{% block title %}DHCP Yönetimi - MikroTik{% endblock %}
+{% block page_title %}DHCP Server Yönetimi{% endblock %}
+{% block page_subtitle %}DHCP sunucuları, IP havuzları ve ağ yapılandırması{% endblock %}
+
+{% block content %}
+<!-- Yeni DHCP Server Oluşturma -->
+<div class="card">
+    <div class="card-title">
+        <i class="fas fa-plus-circle"></i>
+        Yeni DHCP Server Oluştur
+    </div>
+    
+    <form method="post" action="{{ url_for('add_dhcp_server') }}" class="form-grid">
+        <div class="form-group">
+            <label for="server_name">
+                <i class="fas fa-server"></i>
+                Server Adı
+            </label>
+            <input type="text" id="server_name" name="server_name" placeholder="Örn: VM-DHCP-Server" required>
+            <small>DHCP sunucu adı (benzersiz olmalı)</small>
+        </div>
+        
+        <div class="form-group">
+            <label for="interface">
+                <i class="fas fa-network-wired"></i>
+                Interface
+            </label>
+            <select id="interface" name="interface" required>
+                <option value="">Interface seçin...</option>
+                {% for interface in interfaces %}
+                <option value="{{ interface['name'] }}">{{ interface['name'] }}</option>
+                {% endfor %}
+            </select>
+            <small>DHCP sunucusunun çalışacağı interface</small>
+        </div>
+        
+        <div class="form-group">
+            <label for="address_pool">
+                <i class="fas fa-water"></i>
+                IP Pool
+            </label>
+            <select id="address_pool" name="address_pool" required>
+                <option value="">IP Pool seçin...</option>
+                {% for pool in ip_pools %}
+                <option value="{{ pool['name'] }}">{{ pool['name'] }} ({{ pool['ranges'] }})</option>
+                {% endfor %}
+            </select>
+            <small>Kullanılacak IP adresi havuzu</small>
+        </div>
+        
+        <div class="form-group">
+            <label for="lease_time">
+                <i class="fas fa-clock"></i>
+                Lease Süresi
+            </label>
+            <select id="lease_time" name="lease_time">
+                <option value="1h">1 Saat</option>
+                <option value="12h">12 Saat</option>
+                <option value="1d" selected>1 Gün</option>
+                <option value="7d">1 Hafta</option>
+                <option value="30d">1 Ay</option>
+            </select>
+            <small>IP adresinin ne kadar süre verilecegi</small>
+        </div>
+        
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary">
+                <i class="fas fa-plus"></i>
+                DHCP Server Oluştur
+            </button>
+        </div>
+    </form>
+</div>
+
+<!-- Yeni IP Pool Oluşturma -->
+<div class="card">
+    <div class="card-title">
+        <i class="fas fa-plus-circle"></i>
+        Yeni IP Pool Oluştur
+    </div>
+    
+    <form method="post" action="{{ url_for('add_ip_pool') }}" class="form-grid">
+        <div class="form-group">
+            <label for="pool_name">
+                <i class="fas fa-water"></i>
+                Pool Adı
+            </label>
+            <input type="text" id="pool_name" name="pool_name" placeholder="Örn: VM-Pool" required>
+            <small>IP pool adı (benzersiz olmalı)</small>
+        </div>
+        
+        <div class="form-group">
+            <label for="ranges">
+                <i class="fas fa-arrows-alt-h"></i>
+                IP Aralığı
+            </label>
+            <input type="text" id="ranges" name="ranges" placeholder="192.168.10.100-192.168.10.200" required>
+            <small>IP aralığı formatı: başlangıç-bitiş</small>
+        </div>
+        
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary">
+                <i class="fas fa-plus"></i>
+                IP Pool Oluştur
+            </button>
+        </div>
+    </form>
+</div>
+
+<!-- DHCP Network Ekleme -->
+<div class="card">
+    <div class="card-title">
+        <i class="fas fa-plus-circle"></i>
+        DHCP Network Ekle
+    </div>
+    
+    <form method="post" action="{{ url_for('add_dhcp_network') }}" class="form-grid">
+        <div class="form-group">
+            <label for="network_address">
+                <i class="fas fa-sitemap"></i>
+                Network Adresi
+            </label>
+            <input type="text" id="network_address" name="network_address" placeholder="192.168.10.0/24" required>
+            <small>Ağ adresi ve subnet mask (CIDR formatında)</small>
+        </div>
+        
+        <div class="form-group">
+            <label for="gateway">
+                <i class="fas fa-route"></i>
+                Gateway
+            </label>
+            <input type="text" id="gateway" name="gateway" placeholder="192.168.10.1" required>
+            <small>Ağ geçidi IP adresi</small>
+        </div>
+        
+        <div class="form-group">
+            <label for="dns_servers">
+                <i class="fas fa-dns"></i>
+                DNS Sunucuları
+            </label>
+            <input type="text" id="dns_servers" name="dns_servers" value="8.8.8.8,8.8.4.4">
+            <small>DNS sunucu adresleri (virgülle ayırın)</small>
+        </div>
+        
+        <div class="form-group">
+            <label for="domain">
+                <i class="fas fa-globe"></i>
+                Domain
+            </label>
+            <input type="text" id="domain" name="domain" placeholder="vm.local">
+            <small>DHCP ile verilecek domain adı (opsiyonel)</small>
+        </div>
+        
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary">
+                <i class="fas fa-plus"></i>
+                DHCP Network Ekle
+            </button>
+        </div>
+    </form>
+</div>
+
+<!-- Mevcut DHCP Server'lar -->
+<div class="card">
+    <div class="card-title">
+        <i class="fas fa-server"></i>
+        Mevcut DHCP Server'lar
+        <div style="margin-left: auto;">
+            <span style="background: #e3f2fd; color: #1976d2; padding: 5px 10px; border-radius: 15px; font-size: 0.8rem;">
+                <i class="fas fa-database"></i> {{ dhcp_servers|length }} Server
+            </span>
+        </div>
+    </div>
+    
+    {% if dhcp_servers %}
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th><i class="fas fa-server"></i> Server Adı</th>
+                    <th><i class="fas fa-network-wired"></i> Interface</th>
+                    <th><i class="fas fa-water"></i> IP Pool</th>
+                    <th><i class="fas fa-clock"></i> Lease Süresi</th>
+                    <th><i class="fas fa-toggle-on"></i> Durum</th>
+                    <th><i class="fas fa-cogs"></i> İşlemler</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for server in dhcp_servers %}
+                <tr>
+                    <td><strong>{{ server.get('name', '-') }}</strong></td>
+                    <td>{{ server.get('interface', '-') }}</td>
+                    <td>{{ server.get('address-pool', '-') }}</td>
+                    <td>{{ server.get('lease-time', '-') }}</td>
+                    <td>
+                        {% if server.get('disabled') == 'false' %}
+                            <span class="status-badge status-active">Aktif</span>
+                        {% else %}
+                            <span class="status-badge status-inactive">Pasif</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <div class="action-buttons">
+                            <button class="btn btn-sm btn-warning" title="Düzenle">
+                                <i class="fas fa-edit"></i>
+                            </button>
+                            <button class="btn btn-sm btn-danger" title="Sil">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div style="text-align: center; padding: 40px; color: #666;">
+        <i class="fas fa-server" style="font-size: 4rem; color: #ddd; margin-bottom: 20px; display: block;"></i>
+        <h3>Henüz DHCP Server bulunmuyor</h3>
+        <p>Yukarıdaki formu kullanarak ilk DHCP Server'ınızı oluşturabilirsiniz.</p>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Mevcut IP Pool'lar -->
+<div class="card">
+    <div class="card-title">
+        <i class="fas fa-water"></i>
+        IP Pool'lar
+        <div style="margin-left: auto;">
+            <span style="background: #f3e5f5; color: #7b1fa2; padding: 5px 10px; border-radius: 15px; font-size: 0.8rem;">
+                <i class="fas fa-swimming-pool"></i> {{ ip_pools|length }} Pool
+            </span>
+        </div>
+    </div>
+    
+    {% if ip_pools %}
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th><i class="fas fa-water"></i> Pool Adı</th>
+                    <th><i class="fas fa-arrows-alt-h"></i> IP Aralığı</th>
+                    <th><i class="fas fa-chart-bar"></i> Toplam IP</th>
+                    <th><i class="fas fa-cogs"></i> İşlemler</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for pool in ip_pools %}
+                <tr>
+                    <td><strong>{{ pool.get('name', '-') }}</strong></td>
+                    <td style="font-family: monospace;">{{ pool.get('ranges', '-') }}</td>
+                    <td>
+                        {% set range_parts = pool.get('ranges', '').split('-') %}
+                        {% if range_parts|length == 2 %}
+                            {% set start_ip = range_parts[0].split('.')[-1]|int %}
+                            {% set end_ip = range_parts[1].split('.')[-1]|int %}
+                            <span class="badge" style="background: #e8f5e8; color: #2e7d32;">
+                                {{ end_ip - start_ip + 1 }} IP
+                            </span>
+                        {% else %}
+                            <span class="badge" style="background: #fff3cd; color: #856404;">
+                                Hesaplanamadı
+                            </span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <div class="action-buttons">
+                            <button class="btn btn-sm btn-warning" title="Düzenle">
+                                <i class="fas fa-edit"></i>
+                            </button>
+                            <button class="btn btn-sm btn-danger" title="Sil">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div style="text-align: center; padding: 40px; color: #666;">
+        <i class="fas fa-water" style="font-size: 4rem; color: #ddd; margin-bottom: 20px; display: block;"></i>
+        <h3>Henüz IP Pool bulunmuyor</h3>
+        <p>Yukarıdaki formu kullanarak ilk IP Pool'unuzu oluşturabilirsiniz.</p>
+    </div>
+    {% endif %}
+</div>
+
+<!-- DHCP Network'ler -->
+<div class="card">
+    <div class="card-title">
+        <i class="fas fa-sitemap"></i>
+        DHCP Network'ler
+        <div style="margin-left: auto;">
+            <span style="background: #e8f5e8; color: #388e3c; padding: 5px 10px; border-radius: 15px; font-size: 0.8rem;">
+                <i class="fas fa-network-wired"></i> {{ dhcp_networks|length }} Network
+            </span>
+        </div>
+    </div>
+    
+    {% if dhcp_networks %}
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th><i class="fas fa-sitemap"></i> Network</th>
+                    <th><i class="fas fa-route"></i> Gateway</th>
+                    <th><i class="fas fa-dns"></i> DNS</th>
+                    <th><i class="fas fa-globe"></i> Domain</th>
+                    <th><i class="fas fa-cogs"></i> İşlemler</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for network in dhcp_networks %}
+                <tr>
+                    <td><strong style="font-family: monospace;">{{ network.get('address', '-') }}</strong></td>
+                    <td style="font-family: monospace;">{{ network.get('gateway', '-') }}</td>
+                    <td style="font-family: monospace; font-size: 0.9rem;">{{ network.get('dns-server', '-') }}</td>
+                    <td>{{ network.get('domain', '-') }}</td>
+                    <td>
+                        <div class="action-buttons">
+                            <button class="btn btn-sm btn-warning" title="Düzenle">
+                                <i class="fas fa-edit"></i>
+                            </button>
+                            <button class="btn btn-sm btn-danger" title="Sil">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div style="text-align: center; padding: 40px; color: #666;">
+        <i class="fas fa-sitemap" style="font-size: 4rem; color: #ddd; margin-bottom: 20px; display: block;"></i>
+        <h3>Henüz DHCP Network bulunmuyor</h3>
+        <p>Yukarıdaki formu kullanarak ilk DHCP Network'ünüzü oluşturabilirsiniz.</p>
+    </div>
+    {% endif %}
+</div>
+
+<style>
+.form-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 20px;
+    margin-bottom: 20px;
+}
+
+.form-group {
+    display: flex;
+    flex-direction: column;
+}
+
+.form-group label {
+    font-weight: 600;
+    margin-bottom: 8px;
+    color: #333;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.form-group input,
+.form-group select {
+    padding: 12px;
+    border: 2px solid #e1e5e9;
+    border-radius: 8px;
+    font-size: 1rem;
+    transition: border-color 0.3s ease;
+}
+
+.form-group input:focus,
+.form-group select:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.form-group small {
+    margin-top: 4px;
+    color: #666;
+    font-size: 0.85rem;
+}
+
+.form-actions {
+    grid-column: 1 / -1;
+    display: flex;
+    justify-content: center;
+    margin-top: 20px;
+}
+
+.action-buttons {
+    display: flex;
+    gap: 8px;
+}
+
+.btn-sm {
+    padding: 6px 12px;
+    font-size: 0.875rem;
+}
+
+.badge {
+    padding: 4px 8px;
+    border-radius: 12px;
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+@media (max-width: 768px) {
+    .form-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .action-buttons {
+        flex-direction: column;
+    }
+}
+</style>
+
+<script>
+// Form validation ve yardımcı fonksiyonlar
+document.addEventListener('DOMContentLoaded', function() {
+    // IP adresi formatını kontrol et
+    function validateIP(ip) {
+        const ipRegex = /^(\d{1,3}\.){3}\d{1,3}$/;
+        return ipRegex.test(ip);
+    }
+    
+    // CIDR formatını kontrol et
+    function validateCIDR(cidr) {
+        const cidrRegex = /^(\d{1,3}\.){3}\d{1,3}\/\d{1,2}$/;
+        return cidrRegex.test(cidr);
+    }
+    
+    // IP aralığı formatını kontrol et
+    function validateRange(range) {
+        const parts = range.split('-');
+        if (parts.length !== 2) return false;
+        return validateIP(parts[0].trim()) && validateIP(parts[1].trim());
+    }
+    
+    // Form gönderilmeden önce validasyon
+    document.querySelectorAll('form').forEach(form => {
+        form.addEventListener('submit', function(e) {
+            const networkInput = form.querySelector('input[name="network_address"]');
+            const gatewayInput = form.querySelector('input[name="gateway"]');
+            const rangesInput = form.querySelector('input[name="ranges"]');
+            
+            if (networkInput && !validateCIDR(networkInput.value)) {
+                e.preventDefault();
+                alert('Geçersiz network adresi formatı! Örnek: 192.168.1.0/24');
+                networkInput.focus();
+                return;
+            }
+            
+            if (gatewayInput && !validateIP(gatewayInput.value)) {
+                e.preventDefault();
+                alert('Geçersiz gateway IP adresi!');
+                gatewayInput.focus();
+                return;
+            }
+            
+            if (rangesInput && !validateRange(rangesInput.value)) {
+                e.preventDefault();
+                alert('Geçersiz IP aralığı formatı! Örnek: 192.168.1.100-192.168.1.200');
+                rangesInput.focus();
+                return;
+            }
+        });
+    });
+    
+    // Otomatik IP önerileri
+    const networkInput = document.getElementById('network_address');
+    const gatewayInput = document.getElementById('gateway');
+    
+    if (networkInput) {
+        networkInput.addEventListener('blur', function() {
+            const network = this.value;
+            if (validateCIDR(network)) {
+                const baseIP = network.split('/')[0];
+                const octets = baseIP.split('.');
+                octets[3] = '1';
+                const suggestedGateway = octets.join('.');
+                
+                if (gatewayInput && !gatewayInput.value) {
+                    gatewayInput.value = suggestedGateway;
+                }
+            }
+        });
+    }
+});
+</script>
+{% endblock %}

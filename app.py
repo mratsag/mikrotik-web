@@ -7,6 +7,8 @@ import socket
 import threading
 from concurrent.futures import ThreadPoolExecutor
 import time
+import ipaddress
+import re
 
 app = Flask(__name__)
 
@@ -22,7 +24,6 @@ def mikrotik_login(username=None, password=None, host=None):
     """MikroTik'e bağlanır. Eğer kullanıcı bilgileri verilmezse session'dan alır."""
     try:
         if username and password:
-            # Giriş için test bağlantısı
             return connect(
                 host=host or MIKROTIK_HOST,
                 username=username,
@@ -31,7 +32,6 @@ def mikrotik_login(username=None, password=None, host=None):
                 encoding='utf-8'
             )
         else:
-            # Normal işlemler için session'dan bilgileri al
             return connect(
                 host=session.get('mikrotik_host', MIKROTIK_HOST),
                 username=session['mikrotik_user'],
@@ -46,18 +46,14 @@ def mikrotik_login(username=None, password=None, host=None):
 def ping_ip(ip, timeout=1):
     """IP adresinin erişilebilir olup olmadığını kontrol eder"""
     try:
-        # İlk olarak yaygın portları dene
         common_ports = [80, 443, 22, 23, 21, 53, 8080, 8443]
-        
         for port in common_ports:
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             sock.settimeout(timeout)
             result = sock.connect_ex((ip, port))
             sock.close()
-            
             if result == 0:
                 return True
-        
         return False
     except Exception:
         return False
@@ -68,30 +64,20 @@ def get_network_scan(network_prefix, max_workers=50):
     
     def check_ip(i):
         ip = f"{network_prefix}{i}"
-        if ping_ip(ip, 0.8):  # 800ms timeout
+        if ping_ip(ip, 0.8):
             return ip
         return None
     
-    print(f"Ağ taraması başlatılıyor: {network_prefix}1-254")
-    
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        # 1-254 aralığını paralel tara
         futures = [executor.submit(check_ip, i) for i in range(1, 255)]
-        
         for i, future in enumerate(futures):
             try:
-                result = future.result(timeout=2)  # 2 saniye timeout
+                result = future.result(timeout=2)
                 if result:
                     active_ips.append(result)
-                    print(f"Aktif IP bulundu: {result}")
-            except Exception as e:
-                # Timeout veya diğer hatalar için sessizce geç
+            except Exception:
                 pass
-        
-        # Sonuçları sırala
         active_ips.sort(key=lambda x: int(x.split('.')[-1]))
-    
-    print(f"Tarama tamamlandı. {len(active_ips)} aktif IP bulundu.")
     return active_ips
 
 # Template context için request objesini kullanılabilir yap
@@ -125,16 +111,12 @@ def login():
             return render_template('login.html')
         
         try:
-            # MikroTik'e bağlanarak kullanıcı doğrulaması yap
             api = mikrotik_login(username, password, mikrotik_host)
-            
-            # Bağlantı başarılı ise sistem bilgilerini al
             system_resource = list(api.path('system', 'resource'))[0]
             system_identity = list(api.path('system', 'identity'))[0]
             
-            # Session'a kullanıcı bilgilerini kaydet
             session['mikrotik_user'] = username
-            session['mikrotik_pass'] = password  # Dikkat: Gerçek uygulamada encrypt edilmeli
+            session['mikrotik_pass'] = password
             session['mikrotik_host'] = mikrotik_host
             session['user_name'] = username
             session['system_name'] = system_identity.get('name', 'MikroTik')
@@ -145,7 +127,6 @@ def login():
             
             flash(f'Hoş geldiniz, {username}! {system_identity.get("name", "MikroTik")} sistemine bağlandınız.', 'success')
             
-            # Next parametresi varsa oraya yönlendir
             next_page = request.args.get('next')
             if next_page:
                 return redirect(next_page)
@@ -173,6 +154,504 @@ def index():
     except Exception as e:
         flash(f'MikroTik bağlantı hatası: {str(e)}', 'error')
         return render_template('index.html', rules=[])
+
+# ===============================
+# DHCP SERVER MANAGEMENT
+# ===============================
+
+@app.route('/dhcp_management')
+@login_required
+def dhcp_management():
+    """DHCP Server yönetim sayfası"""
+    try:
+        api = mikrotik_login()
+        
+        # DHCP Server'ları al
+        dhcp_servers = list(api.path('ip', 'dhcp-server'))
+        
+        # IP Pool'ları al
+        ip_pools = list(api.path('ip', 'pool'))
+        
+        # Interface'leri al
+        interfaces = list(api.path('interface'))
+        
+        # DHCP Network'leri al
+        dhcp_networks = list(api.path('ip', 'dhcp-server', 'network'))
+        
+        return render_template('dhcp_management.html', 
+                             dhcp_servers=dhcp_servers,
+                             ip_pools=ip_pools,
+                             interfaces=interfaces,
+                             dhcp_networks=dhcp_networks)
+    except Exception as e:
+        flash(f'DHCP veriler yüklenirken hata oluştu: {str(e)}', 'error')
+        return render_template('dhcp_management.html', 
+                             dhcp_servers=[], ip_pools=[], interfaces=[], dhcp_networks=[])
+
+@app.route('/add_dhcp_server', methods=['POST'])
+@login_required
+def add_dhcp_server():
+    """Yeni DHCP Server ekle"""
+    try:
+        api = mikrotik_login()
+        
+        # Form verilerini al
+        server_name = request.form['server_name']
+        interface = request.form['interface']
+        address_pool = request.form['address_pool']
+        lease_time = request.form.get('lease_time', '1d')
+        
+        # DHCP Server oluştur
+        api.path('ip', 'dhcp-server').add(
+            name=server_name,
+            interface=interface,
+            **{'address-pool': address_pool},
+            **{'lease-time': lease_time},
+            disabled='false'
+        )
+        
+        flash(f'DHCP Server "{server_name}" başarıyla oluşturuldu!', 'success')
+    except Exception as e:
+        flash(f'DHCP Server oluşturulurken hata: {str(e)}', 'error')
+    
+    return redirect(url_for('dhcp_management'))
+
+@app.route('/add_ip_pool', methods=['POST'])
+@login_required
+def add_ip_pool():
+    """Yeni IP Pool ekle"""
+    try:
+        api = mikrotik_login()
+        
+        # Form verilerini al
+        pool_name = request.form['pool_name']
+        ranges = request.form['ranges']  # Format: 192.168.1.100-192.168.1.200
+        
+        # IP Pool oluştur
+        api.path('ip', 'pool').add(
+            name=pool_name,
+            ranges=ranges
+        )
+        
+        flash(f'IP Pool "{pool_name}" başarıyla oluşturuldu!', 'success')
+    except Exception as e:
+        flash(f'IP Pool oluşturulurken hata: {str(e)}', 'error')
+    
+    return redirect(url_for('dhcp_management'))
+
+@app.route('/add_dhcp_network', methods=['POST'])
+@login_required
+def add_dhcp_network():
+    """DHCP Network ekle"""
+    try:
+        api = mikrotik_login()
+        
+        # Form verilerini al
+        address = request.form['network_address']  # 192.168.1.0/24
+        gateway = request.form['gateway']
+        dns_servers = request.form.get('dns_servers', '8.8.8.8,8.8.4.4')
+        domain = request.form.get('domain', '')
+        
+        # DHCP Network oluştur
+        network_data = {
+            'address': address,
+            'gateway': gateway,
+            'dns-server': dns_servers
+        }
+        
+        if domain:
+            network_data['domain'] = domain
+            
+        api.path('ip', 'dhcp-server', 'network').add(**network_data)
+        
+        flash(f'DHCP Network "{address}" başarıyla oluşturuldu!', 'success')
+    except Exception as e:
+        flash(f'DHCP Network oluşturulurken hata: {str(e)}', 'error')
+    
+    return redirect(url_for('dhcp_management'))
+
+# ===============================
+# INTERFACE & VLAN MANAGEMENT
+# ===============================
+
+@app.route('/interface_management')
+@login_required
+def interface_management():
+    """Interface ve VLAN yönetim sayfası"""
+    try:
+        api = mikrotik_login()
+        
+        # Tüm interface'leri al
+        interfaces = list(api.path('interface'))
+        
+        # VLAN interface'leri al
+        vlan_interfaces = list(api.path('interface', 'vlan'))
+        
+        # Bridge'leri al
+        bridges = list(api.path('interface', 'bridge'))
+        
+        # Bridge port'larını al
+        bridge_ports = list(api.path('interface', 'bridge', 'port'))
+        
+        # IP adresleri al
+        ip_addresses = list(api.path('ip', 'address'))
+        
+        return render_template('interface_management.html',
+                             interfaces=interfaces,
+                             vlan_interfaces=vlan_interfaces,
+                             bridges=bridges,
+                             bridge_ports=bridge_ports,
+                             ip_addresses=ip_addresses)
+    except Exception as e:
+        flash(f'Interface veriler yüklenirken hata oluştu: {str(e)}', 'error')
+        return render_template('interface_management.html',
+                             interfaces=[], vlan_interfaces=[], bridges=[], bridge_ports=[], ip_addresses=[])
+
+@app.route('/create_vlan', methods=['POST'])
+@login_required
+def create_vlan():
+    """Yeni VLAN oluştur"""
+    try:
+        api = mikrotik_login()
+        
+        # Form verilerini al
+        vlan_name = request.form['vlan_name']  # pglan10
+        vlan_id = request.form['vlan_id']      # 10
+        interface = request.form['interface']   # ether2
+        
+        # VLAN interface oluştur
+        api.path('interface', 'vlan').add(
+            name=vlan_name,
+            **{'vlan-id': vlan_id},
+            interface=interface
+        )
+        
+        flash(f'VLAN "{vlan_name}" (ID: {vlan_id}) başarıyla oluşturuldu!', 'success')
+    except Exception as e:
+        flash(f'VLAN oluşturulurken hata: {str(e)}', 'error')
+    
+    return redirect(url_for('interface_management'))
+
+@app.route('/create_bridge', methods=['POST'])
+@login_required
+def create_bridge():
+    """Yeni Bridge oluştur"""
+    try:
+        api = mikrotik_login()
+        
+        # Form verilerini al
+        bridge_name = request.form['bridge_name']
+        
+        # Bridge oluştur
+        api.path('interface', 'bridge').add(name=bridge_name)
+        
+        flash(f'Bridge "{bridge_name}" başarıyla oluşturuldu!', 'success')
+    except Exception as e:
+        flash(f'Bridge oluşturulurken hata: {str(e)}', 'error')
+    
+    return redirect(url_for('interface_management'))
+
+@app.route('/add_bridge_port', methods=['POST'])
+@login_required
+def add_bridge_port():
+    """Bridge'e port ekle"""
+    try:
+        api = mikrotik_login()
+        
+        # Form verilerini al
+        bridge = request.form['bridge']
+        interface = request.form['port_interface']
+        
+        # Bridge port ekle
+        api.path('interface', 'bridge', 'port').add(
+            bridge=bridge,
+            interface=interface
+        )
+        
+        flash(f'Interface "{interface}" bridge "{bridge}" üzerine eklendi!', 'success')
+    except Exception as e:
+        flash(f'Bridge port eklenirken hata: {str(e)}', 'error')
+    
+    return redirect(url_for('interface_management'))
+
+@app.route('/assign_ip', methods=['POST'])
+@login_required
+def assign_ip():
+    """Interface'e IP adresi ata"""
+    try:
+        api = mikrotik_login()
+        
+        # Form verilerini al
+        interface = request.form['ip_interface']
+        address = request.form['ip_address']    # 192.168.10.1/24
+        
+        # IP adresi ata
+        api.path('ip', 'address').add(
+            interface=interface,
+            address=address
+        )
+        
+        flash(f'IP adresi "{address}" interface "{interface}" üzerine atandı!', 'success')
+    except Exception as e:
+        flash(f'IP adresi atanırken hata: {str(e)}', 'error')
+    
+    return redirect(url_for('interface_management'))
+
+# ===============================
+# VM NETWORK WIZARD
+# ===============================
+
+@app.route('/vm_network_wizard')
+@login_required
+def vm_network_wizard():
+    """VM Network kurulum sihirbazı"""
+    try:
+        api = mikrotik_login()
+        
+        # Mevcut interface'leri al
+        interfaces = list(api.path('interface'))
+        
+        # Mevcut VLAN'ları al
+        vlan_interfaces = list(api.path('interface', 'vlan'))
+        
+        # Mevcut DHCP Server'ları al
+        dhcp_servers = list(api.path('ip', 'dhcp-server'))
+        
+        # Bridge'leri al
+        bridges = list(api.path('interface', 'bridge'))
+        
+        return render_template('vm_network_wizard.html',
+                             interfaces=interfaces,
+                             vlan_interfaces=vlan_interfaces,
+                             dhcp_servers=dhcp_servers,
+                             bridges=bridges)
+    except Exception as e:
+        flash(f'Sihirbaz yüklenirken hata oluştu: {str(e)}', 'error')
+        return render_template('vm_network_wizard.html',
+                             interfaces=[], vlan_interfaces=[], dhcp_servers=[], bridges=[])
+
+@app.route('/create_vm_network', methods=['POST'])
+@login_required
+def create_vm_network():
+    """VM için tam network kurulumu yap"""
+    try:
+        api = mikrotik_login()
+        
+        # Form verilerini al
+        vm_name = request.form['vm_name']
+        base_interface = request.form['base_interface']
+        vlan_id = request.form['vlan_id']
+        network_address = request.form['network_address']  # 192.168.10.0/24
+        gateway_ip = request.form['gateway_ip']            # 192.168.10.1
+        dhcp_start = request.form['dhcp_start']            # 192.168.10.100
+        dhcp_end = request.form['dhcp_end']                # 192.168.10.200
+        dns_servers = request.form.get('dns_servers', '8.8.8.8,8.8.4.4')
+        
+        # İsim formatları
+        vlan_name = f"{vm_name}-vlan{vlan_id}"
+        pool_name = f"{vm_name}-pool"
+        dhcp_server_name = f"{vm_name}-dhcp"
+        bridge_name = f"{vm_name}-bridge"
+        
+        results = []
+        
+        # 1. VLAN Interface oluştur
+        try:
+            api.path('interface', 'vlan').add(
+                name=vlan_name,
+                **{'vlan-id': vlan_id},
+                interface=base_interface
+            )
+            results.append(f"✅ VLAN interface '{vlan_name}' oluşturuldu")
+        except Exception as e:
+            results.append(f"❌ VLAN oluşturma hatası: {str(e)}")
+        
+        # 2. Bridge oluştur
+        try:
+            api.path('interface', 'bridge').add(name=bridge_name)
+            results.append(f"✅ Bridge '{bridge_name}' oluşturuldu")
+        except Exception as e:
+            results.append(f"❌ Bridge oluşturma hatası: {str(e)}")
+        
+        # 3. VLAN'ı Bridge'e ekle
+        try:
+            api.path('interface', 'bridge', 'port').add(
+                bridge=bridge_name,
+                interface=vlan_name
+            )
+            results.append(f"✅ VLAN bridge'e eklendi")
+        except Exception as e:
+            results.append(f"❌ Bridge port ekleme hatası: {str(e)}")
+        
+        # 4. Bridge'e IP adresi ata
+        try:
+            api.path('ip', 'address').add(
+                interface=bridge_name,
+                address=f"{gateway_ip}/{network_address.split('/')[1]}"
+            )
+            results.append(f"✅ IP adresi '{gateway_ip}' atandı")
+        except Exception as e:
+            results.append(f"❌ IP atama hatası: {str(e)}")
+        
+        # 5. IP Pool oluştur
+        try:
+            api.path('ip', 'pool').add(
+                name=pool_name,
+                ranges=f"{dhcp_start}-{dhcp_end}"
+            )
+            results.append(f"✅ IP Pool '{pool_name}' oluşturuldu")
+        except Exception as e:
+            results.append(f"❌ IP Pool oluşturma hatası: {str(e)}")
+        
+        # 6. DHCP Server oluştur
+        try:
+            api.path('ip', 'dhcp-server').add(
+                name=dhcp_server_name,
+                interface=bridge_name,
+                **{'address-pool': pool_name},
+                **{'lease-time': '1d'},
+                disabled='false'
+            )
+            results.append(f"✅ DHCP Server '{dhcp_server_name}' oluşturuldu")
+        except Exception as e:
+            results.append(f"❌ DHCP Server oluşturma hatası: {str(e)}")
+        
+        # 7. DHCP Network ekle
+        try:
+            api.path('ip', 'dhcp-server', 'network').add(
+                address=network_address,
+                gateway=gateway_ip,
+                **{'dns-server': dns_servers},
+                domain=f"{vm_name}.local"
+            )
+            results.append(f"✅ DHCP Network oluşturuldu")
+        except Exception as e:
+            results.append(f"❌ DHCP Network oluşturma hatası: {str(e)}")
+        
+        # 8. Firewall kuralı ekle (VM'den internete çıkış)
+        try:
+            api.path('ip', 'firewall', 'nat').add(
+                chain='srcnat',
+                **{'src-address': network_address},
+                **{'out-interface-list': 'WAN'},
+                action='masquerade',
+                comment=f"{vm_name} NAT Rule"
+            )
+            results.append(f"✅ NAT kuralı eklendi")
+        except Exception as e:
+            results.append(f"❌ NAT kuralı ekleme hatası: {str(e)}")
+        
+        # Sonuçları session'a kaydet
+        session['vm_setup_results'] = {
+            'vm_name': vm_name,
+            'vlan_name': vlan_name,
+            'bridge_name': bridge_name,
+            'network_address': network_address,
+            'gateway_ip': gateway_ip,
+            'dhcp_range': f"{dhcp_start}-{dhcp_end}",
+            'results': results
+        }
+        
+        flash(f'VM "{vm_name}" için network kurulumu tamamlandı!', 'success')
+        return redirect(url_for('vm_setup_results'))
+        
+    except Exception as e:
+        flash(f'VM network kurulumu hatası: {str(e)}', 'error')
+        return redirect(url_for('vm_network_wizard'))
+
+@app.route('/vm_setup_results')
+@login_required
+def vm_setup_results():
+    """VM kurulum sonuçlarını göster"""
+    if 'vm_setup_results' not in session:
+        flash('Kurulum sonuçları bulunamadı!', 'warning')
+        return redirect(url_for('vm_network_wizard'))
+    
+    results = session.pop('vm_setup_results')
+    return render_template('vm_setup_results.html', results=results)
+
+# ===============================
+# ADVANCED NAT MANAGEMENT
+# ===============================
+
+@app.route('/advanced_nat')
+@login_required
+def advanced_nat():
+    """Gelişmiş NAT yönetimi"""
+    try:
+        api = mikrotik_login()
+        
+        # NAT kurallarını al
+        nat_rules = list(api.path('ip', 'firewall', 'nat'))
+        
+        # Interface'leri al
+        interfaces = list(api.path('interface'))
+        
+        # Address list'leri al
+        address_lists = list(api.path('ip', 'firewall', 'address-list'))
+        
+        return render_template('advanced_nat.html',
+                             nat_rules=nat_rules,
+                             interfaces=interfaces,
+                             address_lists=address_lists)
+    except Exception as e:
+        flash(f'NAT veriler yüklenirken hata oluştu: {str(e)}', 'error')
+        return render_template('advanced_nat.html',
+                             nat_rules=[], interfaces=[], address_lists=[])
+
+@app.route('/add_advanced_nat', methods=['POST'])
+@login_required
+def add_advanced_nat():
+    """Gelişmiş NAT kuralı ekle"""
+    try:
+        api = mikrotik_login()
+        
+        # Form verilerini al
+        rule_name = request.form['rule_name']
+        chain = request.form['chain']
+        protocol = request.form.get('protocol', 'tcp')
+        src_address = request.form.get('src_address', '')
+        dst_address = request.form.get('dst_address', '')
+        dst_port = request.form.get('dst_port', '')
+        to_addresses = request.form.get('to_addresses', '')
+        to_ports = request.form.get('to_ports', '')
+        out_interface = request.form.get('out_interface', '')
+        action = request.form['action']
+        
+        # NAT kuralı verilerini hazırla
+        nat_data = {
+            'chain': chain,
+            'action': action,
+            'comment': rule_name
+        }
+        
+        if protocol:
+            nat_data['protocol'] = protocol
+        if src_address:
+            nat_data['src-address'] = src_address
+        if dst_address:
+            nat_data['dst-address'] = dst_address
+        if dst_port:
+            nat_data['dst-port'] = dst_port
+        if to_addresses:
+            nat_data['to-addresses'] = to_addresses
+        if to_ports:
+            nat_data['to-ports'] = to_ports
+        if out_interface:
+            nat_data['out-interface'] = out_interface
+        
+        # NAT kuralını ekle
+        api.path('ip', 'firewall', 'nat').add(**nat_data)
+        
+        flash(f'NAT kuralı "{rule_name}" başarıyla eklendi!', 'success')
+    except Exception as e:
+        flash(f'NAT kuralı eklenirken hata: {str(e)}', 'error')
+    
+    return redirect(url_for('advanced_nat'))
+
+# ===============================
+# EXISTING ROUTES (NAT, IP MONITOR, ETC.)
+# ===============================
 
 @app.route('/add_rule', methods=['POST'])
 @login_required
@@ -216,105 +695,30 @@ def delete_rule():
     
     return redirect(url_for('index'))
 
-@app.route('/edit_rule', methods=['GET'])
-@login_required
-def edit_rule():
-    rule_id = request.args.get('rule_id')
-    if not rule_id:
-        flash('Kural ID eksik!', 'error')
-        return redirect(url_for('index'))
-
-    try:
-        api = mikrotik_login()
-        rules = list(api.path('ip', 'firewall', 'nat').select('.id', 'chain', 'src-address', 'dst-address', 'protocol', 'dst-port', 'action', 'comment').where('.id', rule_id))
-        rule = rules[0] if rules else None
-
-        if not rule:
-            flash('Kural bulunamadı!', 'error')
-            return redirect(url_for('index'))
-
-        return render_template('edit_rule.html', rule=rule)
-    except Exception as e:
-        flash(f'Kural yüklenirken hata oluştu: {str(e)}', 'error')
-        return redirect(url_for('index'))
-
-@app.route('/edit_rule', methods=['POST'])
-@login_required
-def edit_rule_post():
-    rule_id = request.form.get('rule_id')
-    if not rule_id:
-        flash('Kural ID eksik!', 'error')
-        return redirect(url_for('index'))
-
-    try:
-        chain = request.form.get('chain')
-        src_address = request.form.get('src_address')
-        dst_address = request.form.get('dst_address')
-        protocol = request.form.get('protocol')
-        dst_port = request.form.get('dst_port')
-        action = request.form.get('action')
-        comment = request.form.get('comment')
-
-        api = mikrotik_login()
-
-        # Boş değerleri None olarak ayarla
-        update_data = {'.id': rule_id}
-        
-        if chain:
-            update_data['chain'] = chain
-        if src_address:
-            update_data['src-address'] = src_address
-        if dst_address:
-            update_data['dst-address'] = dst_address
-        if protocol:
-            update_data['protocol'] = protocol
-        if dst_port:
-            update_data['dst-port'] = dst_port
-        if action:
-            update_data['action'] = action
-        if comment:
-            update_data['comment'] = comment
-
-        api.path('ip', 'firewall', 'nat').set(**update_data)
-        flash('Kural başarıyla güncellendi!', 'success')
-    except Exception as e:
-        flash(f'Kural güncellenirken hata oluştu: {str(e)}', 'error')
-
-    return redirect(url_for('index'))
-
 @app.route('/ip_monitor')
 @login_required
 def ip_monitor():
     try:
         api = mikrotik_login()
         
-        # DHCP lease'leri al
         dhcp_leases = list(api.path('ip', 'dhcp-server', 'lease'))
-        
-        # ARP tablosunu al
         arp_table = list(api.path('ip', 'arp'))
-        
-        # IP adresi listesini al
         addresses = list(api.path('ip', 'address'))
         
-        # Tüm IP aralıklarını tanımla
         target_ranges = ['10.10.10.', '20.20.20.', '192.168.254.']
         
-        # DHCP lease'leri filtrele
         filtered_leases = []
         for lease in dhcp_leases:
             ip = lease.get('address', '')
             if any(ip.startswith(range_prefix) for range_prefix in target_ranges):
                 filtered_leases.append(lease)
         
-        # ARP tablosunu filtrele
         filtered_arp = []
         for arp in arp_table:
             ip = arp.get('address', '')
             if any(ip.startswith(range_prefix) for range_prefix in target_ranges):
                 filtered_arp.append(arp)
         
-        # IP kullanım durumunu analiz et
         used_ips = set()
         for lease in filtered_leases:
             if lease.get('address'):
@@ -324,23 +728,35 @@ def ip_monitor():
             if arp.get('address'):
                 used_ips.add(arp.get('address'))
         
-        # Her ağ için ayrı analiz
         network_analysis = {}
         
         for range_prefix in target_ranges:
             network_name = range_prefix + 'x'
             
-            # Bu ağdaki kullanılan IP'ler
+            if range_prefix == '192.168.254.':
+                try:
+                    active_ips_scan = get_network_scan(range_prefix, max_workers=30)
+                    for ip in active_ips_scan:
+                        if ip not in used_ips:
+                            used_ips.add(ip)
+                            filtered_arp.append({
+                                'address': ip,
+                                'mac-address': 'Tarama ile bulundu',
+                                'interface': 'Scan',
+                                'complete': 'true',
+                                'comment': 'Ağ tarama sonucu'
+                            })
+                except Exception as scan_error:
+                    print(f"Ağ tarama hatası: {scan_error}")
+            
             used_in_network = []
             available_in_network = []
             
             for i in range(1, 255):
                 ip = f"{range_prefix}{i}"
                 if ip in used_ips:
-                    # Kullanılan IP için detay bilgi topla
                     ip_details = {'ip': ip, 'type': 'unknown', 'hostname': '', 'mac': '', 'status': ''}
                     
-                    # DHCP lease'den bilgi al
                     for lease in filtered_leases:
                         if lease.get('address') == ip:
                             ip_details.update({
@@ -351,7 +767,6 @@ def ip_monitor():
                             })
                             break
                     
-                    # ARP tablosundan bilgi al (eğer DHCP'de yoksa)
                     if ip_details['type'] == 'unknown':
                         for arp_entry in filtered_arp:
                             if arp_entry.get('address') == ip:
@@ -366,7 +781,6 @@ def ip_monitor():
                 else:
                     available_in_network.append(ip)
             
-            # Kullanım yüzdesini hesapla
             total_count = 254
             used_count = len(used_in_network)
             available_count = len(available_in_network)
@@ -402,38 +816,26 @@ def ip_monitor():
 def ip_monitor_data():
     """IP monitor verileri için JSON API"""
     try:
-        print("API: IP monitor data istendi")
         api = mikrotik_login()
         
-        # DHCP lease'leri al
         dhcp_leases = list(api.path('ip', 'dhcp-server', 'lease'))
-        print(f"API: {len(dhcp_leases)} DHCP lease bulundu")
-        
-        # ARP tablosunu al
         arp_table = list(api.path('ip', 'arp'))
-        print(f"API: {len(arp_table)} ARP girişi bulundu")
-        
-        # IP adresi listesini al
         addresses = list(api.path('ip', 'address'))
         
-        # Tüm IP aralıklarını tanımla
         target_ranges = ['10.10.10.', '20.20.20.', '192.168.254.']
         
-        # DHCP lease'leri filtrele
         filtered_leases = []
         for lease in dhcp_leases:
             ip = lease.get('address', '')
             if any(ip.startswith(range_prefix) for range_prefix in target_ranges):
                 filtered_leases.append(lease)
         
-        # ARP tablosunu filtrele
         filtered_arp = []
         for arp in arp_table:
             ip = arp.get('address', '')
             if any(ip.startswith(range_prefix) for range_prefix in target_ranges):
                 filtered_arp.append(arp)
         
-        # IP kullanım durumunu analiz et
         used_ips = set()
         for lease in filtered_leases:
             if lease.get('address'):
@@ -443,26 +845,17 @@ def ip_monitor_data():
             if arp.get('address'):
                 used_ips.add(arp.get('address'))
         
-        print(f"API: DHCP/ARP'den {len(used_ips)} kullanılan IP bulundu")
-        
-        # Her ağ için ayrı analiz
         network_analysis = {}
         
         for range_prefix in target_ranges:
             network_name = range_prefix + 'x'
             
-            # Sadece 192.168.254.x ağı için ek tarama yap
             if range_prefix == '192.168.254.':
-                print("API: 192.168.254.x ağı için ek tarama başlatılıyor...")
                 try:
-                    # Hızlı tarama yap
                     active_ips_scan = get_network_scan(range_prefix, max_workers=30)
-                    print(f"API: Tarama ile {len(active_ips_scan)} aktif IP bulundu")
-                    
                     for ip in active_ips_scan:
                         if ip not in used_ips:
                             used_ips.add(ip)
-                            # Tarama ile bulunan IP'ler için ARP tablosuna ekle
                             filtered_arp.append({
                                 'address': ip,
                                 'mac-address': 'Tarama ile bulundu',
@@ -471,19 +864,16 @@ def ip_monitor_data():
                                 'comment': 'Ağ tarama sonucu'
                             })
                 except Exception as scan_error:
-                    print(f"API: Ağ tarama hatası: {scan_error}")
+                    print(f"Ağ tarama hatası: {scan_error}")
             
-            # Bu ağdaki kullanılan IP'ler
             used_in_network = []
             available_in_network = []
             
             for i in range(1, 255):
                 ip = f"{range_prefix}{i}"
                 if ip in used_ips:
-                    # Kullanılan IP için detay bilgi topla
                     ip_details = {'ip': ip, 'type': 'unknown', 'hostname': '', 'mac': '', 'status': ''}
                     
-                    # DHCP lease'den bilgi al
                     for lease in filtered_leases:
                         if lease.get('address') == ip:
                             ip_details.update({
@@ -494,7 +884,6 @@ def ip_monitor_data():
                             })
                             break
                     
-                    # ARP tablosundan bilgi al (eğer DHCP'de yoksa)
                     if ip_details['type'] == 'unknown':
                         for arp_entry in filtered_arp:
                             if arp_entry.get('address') == ip:
@@ -509,7 +898,6 @@ def ip_monitor_data():
                 else:
                     available_in_network.append(ip)
             
-            # Kullanım yüzdesini hesapla
             total_count = 254
             used_count = len(used_in_network)
             available_count = len(available_in_network)
@@ -523,13 +911,8 @@ def ip_monitor_data():
                 'total_count': total_count,
                 'usage_percentage': usage_percentage
             }
-            
-            print(f"API: {network_name} - {used_count} kullanılan, {available_count} boş")
         
-        print(f"API: Toplam {len(used_ips)} IP kullanımda")
-        
-        # JSON formatında döndür
-        response_data = {
+        return jsonify({
             'success': True,
             'dhcp_leases': filtered_leases,
             'arp_table': filtered_arp,
@@ -537,39 +920,26 @@ def ip_monitor_data():
             'network_analysis': network_analysis,
             'addresses': addresses,
             'timestamp': int(time.time())
-        }
-        
-        print("API: Veriler başarıyla hazırlandı")
-        return jsonify(response_data)
+        })
         
     except Exception as e:
-        print(f"API: Hata oluştu: {str(e)}")
         return jsonify({
             'success': False,
             'error': str(e),
             'timestamp': int(time.time())
         }), 500
 
-# Hızlı ping kontrolü için endpoint
 @app.route('/api/ping_network/<network>')
 @login_required
 def ping_network(network):
     """Belirli bir ağı hızlı tarar"""
     try:
-        print(f"API: Ağ tarama istendi: {network}")
-        
-        # Güvenlik kontrolü
         allowed_networks = ['10.10.10', '20.20.20', '192.168.254']
         if network not in allowed_networks:
             return jsonify({'success': False, 'error': 'Geçersiz ağ adresi'}), 400
         
         network_prefix = f"{network}."
-        print(f"API: {network_prefix}x ağı taranıyor...")
-        
-        # Network scan başlat
         active_ips = get_network_scan(network_prefix, max_workers=40)
-        
-        print(f"API: Tarama tamamlandı. {len(active_ips)} aktif IP bulundu")
         
         return jsonify({
             'success': True,
@@ -580,20 +950,17 @@ def ping_network(network):
         })
         
     except Exception as e:
-        print(f"API: Ping network hatası: {str(e)}")
         return jsonify({
             'success': False, 
             'error': str(e),
             'timestamp': int(time.time())
         }), 500
 
-# Kullanıcı profil sayfası
 @app.route('/profile')
 @login_required
 def profile():
     try:
         api = mikrotik_login()
-        # Sistem bilgilerini al
         system_resource = list(api.path('system', 'resource'))[0]
         system_identity = list(api.path('system', 'identity'))[0]
         system_clock = list(api.path('system', 'clock'))[0]
@@ -616,17 +983,14 @@ def profile():
         flash(f'Sistem bilgileri alınırken hata oluştu: {str(e)}', 'error')
         return render_template('profile.html', system_info={})
 
-# Sağlık kontrolü endpoint'i
 @app.route('/api/health')
 def health_check():
     """Uygulama sağlık durumu kontrolü"""
     try:
-        # MikroTik bağlantısını test et (eğer session varsa)
         mikrotik_status = 'disconnected'
         if 'mikrotik_user' in session:
             try:
                 api = mikrotik_login()
-                # Basit bir komut çalıştır
                 list(api.path('system', 'identity'))
                 mikrotik_status = 'connected'
             except:
@@ -645,7 +1009,6 @@ def health_check():
             'timestamp': int(time.time())
         }), 500
 
-# Error handlers
 @app.errorhandler(404)
 def not_found_error(error):
     return render_template('404.html'), 404
@@ -654,14 +1017,17 @@ def not_found_error(error):
 def internal_error(error):
     return render_template('500.html'), 500
 
-# Uygulama başlatma
 if __name__ == '__main__':
     print("🚀 MikroTik Panel başlatılıyor...")
     print(f"📡 MikroTik Host: {MIKROTIK_HOST}:{MIKROTIK_PORT}")
     print(f"🌐 Web Server: http://0.0.0.0:5050")
-    print("🔧 Debug Mode: Aktif")
+    print("🔧 Production Mode: Aktif")
     print("⚡ AJAX API: /api/ip_monitor_data")
     print("🔍 Network Scan: /api/ping_network/<network>")
+    print("🆕 DHCP Management: /dhcp_management")
+    print("🆕 Interface Management: /interface_management")
+    print("🆕 VM Network Wizard: /vm_network_wizard")
+    print("🆕 Advanced NAT: /advanced_nat")
     print("=" * 50)
     
-    app.run(host='0.0.0.0', port=5050, debug=True)
+    app.run(host='0.0.0.0', port=5050, debug=False)

@@ -1,0 +1,679 @@
+{% extends "base.html" %}
+
+{% block title %}Interface Yönetimi - MikroTik{% endblock %}
+{% block page_title %}Interface & VLAN Yönetimi{% endblock %}
+{% block page_subtitle %}Interface'ler, VLAN'lar ve Bridge yapılandırması{% endblock %}
+
+{% block content %}
+<!-- VLAN Oluşturma -->
+<div class="card">
+    <div class="card-title">
+        <i class="fas fa-plus-circle"></i>
+        Yeni VLAN Oluştur
+        <div style="margin-left: auto;">
+            <span style="background: #e3f2fd; color: #1976d2; padding: 5px 10px; border-radius: 15px; font-size: 0.8rem;">
+                <i class="fas fa-info-circle"></i> Sanal makine için VLAN
+            </span>
+        </div>
+    </div>
+    
+    <form method="post" action="{{ url_for('create_vlan') }}" class="form-grid">
+        <div class="form-group">
+            <label for="vlan_name">
+                <i class="fas fa-tag"></i>
+                VLAN Adı
+            </label>
+            <input type="text" id="vlan_name" name="vlan_name" placeholder="Örn: pglan10, vmlan20" required>
+            <small>VLAN interface adı (benzersiz olmalı)</small>
+        </div>
+        
+        <div class="form-group">
+            <label for="vlan_id">
+                <i class="fas fa-hashtag"></i>
+                VLAN ID
+            </label>
+            <input type="number" id="vlan_id" name="vlan_id" min="1" max="4094" placeholder="10" required>
+            <small>VLAN numarası (1-4094 arası)</small>
+        </div>
+        
+        <div class="form-group">
+            <label for="interface">
+                <i class="fas fa-network-wired"></i>
+                Fiziksel Interface
+            </label>
+            <select id="interface" name="interface" required>
+                <option value="">Interface seçin...</option>
+                {% for interface in interfaces %}
+                    {% if interface.get('type') == 'ether' or 'ether' in interface.get('name', '') %}
+                    <option value="{{ interface['name'] }}">
+                        {{ interface['name'] }}
+                        {% if interface.get('running') == 'true' %}
+                            <span style="color: green;">✓ Aktif</span>
+                        {% else %}
+                            <span style="color: red;">✗ Pasif</span>
+                        {% endif %}
+                    </option>
+                    {% endif %}
+                {% endfor %}
+            </select>
+            <small>VLAN'ın bağlanacağı fiziksel interface</small>
+        </div>
+        
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary">
+                <i class="fas fa-plus"></i>
+                VLAN Oluştur
+            </button>
+        </div>
+    </form>
+</div>
+
+<!-- Bridge Oluşturma -->
+<div class="card">
+    <div class="card-title">
+        <i class="fas fa-plus-circle"></i>
+        Yeni Bridge Oluştur
+    </div>
+    
+    <form method="post" action="{{ url_for('create_bridge') }}" class="form-inline">
+        <div class="form-group">
+            <label for="bridge_name">
+                <i class="fas fa-project-diagram"></i>
+                Bridge Adı
+            </label>
+            <input type="text" id="bridge_name" name="bridge_name" placeholder="Örn: vm-bridge, lan-bridge" required>
+            <small>Bridge interface adı</small>
+        </div>
+        
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary">
+                <i class="fas fa-plus"></i>
+                Bridge Oluştur
+            </button>
+        </div>
+    </form>
+</div>
+
+<!-- Bridge'e Port Ekleme -->
+<div class="card">
+    <div class="card-title">
+        <i class="fas fa-link"></i>
+        Bridge'e Interface Ekle
+    </div>
+    
+    <form method="post" action="{{ url_for('add_bridge_port') }}" class="form-grid">
+        <div class="form-group">
+            <label for="bridge">
+                <i class="fas fa-project-diagram"></i>
+                Bridge
+            </label>
+            <select id="bridge" name="bridge" required>
+                <option value="">Bridge seçin...</option>
+                {% for bridge in bridges %}
+                <option value="{{ bridge['name'] }}">{{ bridge['name'] }}</option>
+                {% endfor %}
+            </select>
+            <small>Interface'in ekleneceği bridge</small>
+        </div>
+        
+        <div class="form-group">
+            <label for="port_interface">
+                <i class="fas fa-ethernet"></i>
+                Interface
+            </label>
+            <select id="port_interface" name="port_interface" required>
+                <option value="">Interface seçin...</option>
+                {% for interface in interfaces %}
+                <option value="{{ interface['name'] }}">{{ interface['name'] }}</option>
+                {% endfor %}
+                {% for vlan in vlan_interfaces %}
+                <option value="{{ vlan['name'] }}">{{ vlan['name'] }} (VLAN {{ vlan.get('vlan-id', '') }})</option>
+                {% endfor %}
+            </select>
+            <small>Bridge'e eklenecek interface</small>
+        </div>
+        
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary">
+                <i class="fas fa-link"></i>
+                Bridge'e Ekle
+            </button>
+        </div>
+    </form>
+</div>
+
+<!-- IP Adresi Atama -->
+<div class="card">
+    <div class="card-title">
+        <i class="fas fa-network-wired"></i>
+        Interface'e IP Adresi Ata
+    </div>
+    
+    <form method="post" action="{{ url_for('assign_ip') }}" class="form-grid">
+        <div class="form-group">
+            <label for="ip_interface">
+                <i class="fas fa-ethernet"></i>
+                Interface
+            </label>
+            <select id="ip_interface" name="ip_interface" required>
+                <option value="">Interface seçin...</option>
+                {% for interface in interfaces %}
+                <option value="{{ interface['name'] }}">{{ interface['name'] }}</option>
+                {% endfor %}
+                {% for vlan in vlan_interfaces %}
+                <option value="{{ vlan['name'] }}">{{ vlan['name'] }} (VLAN {{ vlan.get('vlan-id', '') }})</option>
+                {% endfor %}
+                {% for bridge in bridges %}
+                <option value="{{ bridge['name'] }}">{{ bridge['name'] }} (Bridge)</option>
+                {% endfor %}
+            </select>
+            <small>IP adresinin atanacağı interface</small>
+        </div>
+        
+        <div class="form-group">
+            <label for="ip_address">
+                <i class="fas fa-globe"></i>
+                IP Adresi
+            </label>
+            <input type="text" id="ip_address" name="ip_address" placeholder="192.168.10.1/24" required>
+            <small>IP adresi ve subnet mask (CIDR formatında)</small>
+        </div>
+        
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary">
+                <i class="fas fa-check"></i>
+                IP Adresi Ata
+            </button>
+        </div>
+    </form>
+</div>
+
+<!-- Mevcut VLAN'lar -->
+<div class="card">
+    <div class="card-title">
+        <i class="fas fa-tags"></i>
+        Mevcut VLAN Interface'ler
+        <div style="margin-left: auto;">
+            <span style="background: #f3e5f5; color: #7b1fa2; padding: 5px 10px; border-radius: 15px; font-size: 0.8rem;">
+                <i class="fas fa-layer-group"></i> {{ vlan_interfaces|length }} VLAN
+            </span>
+        </div>
+    </div>
+    
+    {% if vlan_interfaces %}
+    <div class="vlan-grid">
+        {% for vlan in vlan_interfaces %}
+        <div class="vlan-card">
+            <div class="vlan-header">
+                <div class="vlan-name">
+                    <i class="fas fa-tag"></i>
+                    {{ vlan['name'] }}
+                </div>
+                <div class="vlan-id">
+                    VLAN {{ vlan.get('vlan-id', 'N/A') }}
+                </div>
+            </div>
+            
+            <div class="vlan-details">
+                <div class="detail-item">
+                    <i class="fas fa-network-wired"></i>
+                    <span>Interface: {{ vlan.get('interface', '-') }}</span>
+                </div>
+                
+                <div class="detail-item">
+                    <i class="fas fa-info-circle"></i>
+                    <span>
+                        {% if vlan.get('disabled') == 'false' %}
+                            <span class="status-badge status-active">Aktif</span>
+                        {% else %}
+                            <span class="status-badge status-inactive">Pasif</span>
+                        {% endif %}
+                    </span>
+                </div>
+                
+                <!-- Bu VLAN'a atanmış IP adresleri -->
+                {% for ip in ip_addresses %}
+                    {% if ip.get('interface') == vlan['name'] %}
+                    <div class="detail-item">
+                        <i class="fas fa-globe"></i>
+                        <span>IP: {{ ip.get('address', '-') }}</span>
+                    </div>
+                    {% endif %}
+                {% endfor %}
+            </div>
+            
+            <div class="vlan-actions">
+                <button class="btn btn-sm btn-warning" title="Düzenle">
+                    <i class="fas fa-edit"></i>
+                </button>
+                <button class="btn btn-sm btn-danger" title="Sil">
+                    <i class="fas fa-trash"></i>
+                </button>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div style="text-align: center; padding: 40px; color: #666;">
+        <i class="fas fa-tags" style="font-size: 4rem; color: #ddd; margin-bottom: 20px; display: block;"></i>
+        <h3>Henüz VLAN interface bulunmuyor</h3>
+        <p>Yukarıdaki formu kullanarak ilk VLAN'ınızı oluşturabilirsiniz.</p>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Mevcut Bridge'ler -->
+<div class="card">
+    <div class="card-title">
+        <i class="fas fa-project-diagram"></i>
+        Bridge Interface'ler
+        <div style="margin-left: auto;">
+            <span style="background: #e8f5e8; color: #388e3c; padding: 5px 10px; border-radius: 15px; font-size: 0.8rem;">
+                <i class="fas fa-project-diagram"></i> {{ bridges|length }} Bridge
+            </span>
+        </div>
+    </div>
+    
+    {% if bridges %}
+    <div class="bridge-grid">
+        {% for bridge in bridges %}
+        <div class="bridge-card">
+            <div class="bridge-header">
+                <div class="bridge-name">
+                    <i class="fas fa-project-diagram"></i>
+                    {{ bridge['name'] }}
+                </div>
+                <div class="bridge-status">
+                    {% if bridge.get('disabled') == 'false' %}
+                        <span class="status-badge status-active">Aktif</span>
+                    {% else %}
+                        <span class="status-badge status-inactive">Pasif</span>
+                    {% endif %}
+                </div>
+            </div>
+            
+            <div class="bridge-details">
+                <!-- Bridge'e bağlı port'lar -->
+                <div class="bridge-ports">
+                    <h5><i class="fas fa-plug"></i> Bağlı Port'lar:</h5>
+                    {% set bridge_port_count = 0 %}
+                    {% for port in bridge_ports %}
+                        {% if port.get('bridge') == bridge['name'] %}
+                            {% set bridge_port_count = bridge_port_count + 1 %}
+                            <div class="port-item">
+                                <i class="fas fa-ethernet"></i>
+                                {{ port.get('interface', '-') }}
+                            </div>
+                        {% endif %}
+                    {% endfor %}
+                    
+                    {% if bridge_port_count == 0 %}
+                    <div class="port-item" style="color: #999; font-style: italic;">
+                        <i class="fas fa-minus"></i> Port bağlı değil
+                    </div>
+                    {% endif %}
+                </div>
+                
+                <!-- Bridge IP adresleri -->
+                {% for ip in ip_addresses %}
+                    {% if ip.get('interface') == bridge['name'] %}
+                    <div class="detail-item">
+                        <i class="fas fa-globe"></i>
+                        <span>IP: {{ ip.get('address', '-') }}</span>
+                    </div>
+                    {% endif %}
+                {% endfor %}
+            </div>
+            
+            <div class="bridge-actions">
+                <button class="btn btn-sm btn-info" title="Port Ekle">
+                    <i class="fas fa-plus"></i>
+                </button>
+                <button class="btn btn-sm btn-warning" title="Düzenle">
+                    <i class="fas fa-edit"></i>
+                </button>
+                <button class="btn btn-sm btn-danger" title="Sil">
+                    <i class="fas fa-trash"></i>
+                </button>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div style="text-align: center; padding: 40px; color: #666;">
+        <i class="fas fa-project-diagram" style="font-size: 4rem; color: #ddd; margin-bottom: 20px; display: block;"></i>
+        <h3>Henüz Bridge bulunmuyor</h3>
+        <p>Yukarıdaki formu kullanarak ilk Bridge'inizi oluşturabilirsiniz.</p>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Fiziksel Interface'ler -->
+<div class="card">
+    <div class="card-title">
+        <i class="fas fa-ethernet"></i>
+        Fiziksel Interface'ler
+        <div style="margin-left: auto;">
+            <span style="background: #fff3cd; color: #856404; padding: 5px 10px; border-radius: 15px; font-size: 0.8rem;">
+                <i class="fas fa-plug"></i> {{ interfaces|length }} Interface
+            </span>
+        </div>
+    </div>
+    
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th><i class="fas fa-ethernet"></i> Interface</th>
+                    <th><i class="fas fa-info-circle"></i> Tip</th>
+                    <th><i class="fas fa-tachometer-alt"></i> Hız</th>
+                    <th><i class="fas fa-toggle-on"></i> Durum</th>
+                    <th><i class="fas fa-link"></i> Bağlantı</th>
+                    <th><i class="fas fa-comment"></i> Açıklama</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for interface in interfaces %}
+                <tr>
+                    <td><strong>{{ interface.get('name', '-') }}</strong></td>
+                    <td>
+                        <span class="type-badge">
+                            {{ interface.get('type', 'unknown') }}
+                        </span>
+                    </td>
+                    <td>{{ interface.get('actual-mtu', interface.get('mtu', '-')) }}</td>
+                    <td>
+                        {% if interface.get('disabled') == 'false' %}
+                            <span class="status-badge status-active">Aktif</span>
+                        {% else %}
+                            <span class="status-badge status-inactive">Pasif</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if interface.get('running') == 'true' %}
+                            <span class="status-badge status-connected">Bağlı</span>
+                        {% else %}
+                            <span class="status-badge status-disconnected">Bağlı Değil</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ interface.get('comment', '-') }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<style>
+.form-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 20px;
+    margin-bottom: 20px;
+}
+
+.form-inline {
+    display: flex;
+    gap: 20px;
+    align-items: end;
+    flex-wrap: wrap;
+}
+
+.form-group {
+    display: flex;
+    flex-direction: column;
+    min-width: 200px;
+}
+
+.form-group label {
+    font-weight: 600;
+    margin-bottom: 8px;
+    color: #333;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.form-group input,
+.form-group select {
+    padding: 12px;
+    border: 2px solid #e1e5e9;
+    border-radius: 8px;
+    font-size: 1rem;
+    transition: border-color 0.3s ease;
+}
+
+.form-group input:focus,
+.form-group select:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.form-group small {
+    margin-top: 4px;
+    color: #666;
+    font-size: 0.85rem;
+}
+
+.form-actions {
+    display: flex;
+    justify-content: center;
+    margin-top: 20px;
+}
+
+.vlan-grid,
+.bridge-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 20px;
+}
+
+.vlan-card,
+.bridge-card {
+    background: white;
+    border: 2px solid #f0f0f0;
+    border-radius: 12px;
+    padding: 20px;
+    transition: all 0.3s ease;
+    position: relative;
+}
+
+.vlan-card:hover,
+.bridge-card:hover {
+    border-color: #667eea;
+    box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+    transform: translateY(-2px);
+}
+
+.vlan-header,
+.bridge-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+.vlan-name,
+.bridge-name {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: #333;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.vlan-id {
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: white;
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+.vlan-details,
+.bridge-details {
+    margin-bottom: 15px;
+}
+
+.detail-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    font-size: 0.9rem;
+    color: #666;
+}
+
+.bridge-ports {
+    margin-bottom: 15px;
+}
+
+.bridge-ports h5 {
+    color: #333;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.port-item {
+    background: #f8f9fa;
+    padding: 6px 12px;
+    border-radius: 6px;
+    margin-bottom: 4px;
+    font-size: 0.85rem;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.vlan-actions,
+.bridge-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+}
+
+.btn-sm {
+    padding: 6px 12px;
+    font-size: 0.875rem;
+}
+
+.type-badge {
+    background: #e3f2fd;
+    color: #1976d2;
+    padding: 4px 8px;
+    border-radius: 12px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.status-connected {
+    background: #d4edda;
+    color: #155724;
+}
+
+.status-disconnected {
+    background: #f8d7da;
+    color: #721c24;
+}
+
+@media (max-width: 768px) {
+    .form-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .form-inline {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    
+    .vlan-grid,
+    .bridge-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .vlan-header,
+    .bridge-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+    }
+}
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // VLAN adı otomatik oluşturma
+    const vlanIdInput = document.getElementById('vlan_id');
+    const vlanNameInput = document.getElementById('vlan_name');
+    
+    if (vlanIdInput && vlanNameInput) {
+        vlanIdInput.addEventListener('input', function() {
+            if (!vlanNameInput.value || vlanNameInput.value.startsWith('pglan') || vlanNameInput.value.startsWith('vmlan')) {
+                vlanNameInput.value = `pglan${this.value}`;
+            }
+        });
+    }
+    
+    // IP adresi validasyonu
+    function validateCIDR(cidr) {
+        const cidrRegex = /^(\d{1,3}\.){3}\d{1,3}\/\d{1,2}$/;
+        return cidrRegex.test(cidr);
+    }
+    
+    // Form validasyonu
+    document.querySelectorAll('form').forEach(form => {
+        form.addEventListener('submit', function(e) {
+            const ipInput = form.querySelector('input[name="ip_address"]');
+            const vlanIdInput = form.querySelector('input[name="vlan_id"]');
+            
+            if (ipInput && !validateCIDR(ipInput.value)) {
+                e.preventDefault();
+                alert('Geçersiz IP adresi formatı! Örnek: 192.168.1.1/24');
+                ipInput.focus();
+                return;
+            }
+            
+            if (vlanIdInput) {
+                const vlanId = parseInt(vlanIdInput.value);
+                if (vlanId < 1 || vlanId > 4094) {
+                    e.preventDefault();
+                    alert('VLAN ID 1-4094 arasında olmalıdır!');
+                    vlanIdInput.focus();
+                    return;
+                }
+            }
+        });
+    });
+    
+    // Interface seçimi değiştiğinde otomatik öneriler
+    const interfaceSelect = document.getElementById('ip_interface');
+    const ipAddressInput = document.getElementById('ip_address');
+    
+    if (interfaceSelect && ipAddressInput) {
+        interfaceSelect.addEventListener('change', function() {
+            const selectedInterface = this.value;
+            
+            // VLAN interface'i seçildiyse otomatik IP önerisi
+            if (selectedInterface.includes('pglan') || selectedInterface.includes('vmlan')) {
+                const vlanMatch = selectedInterface.match(/(\d+)$/);
+                if (vlanMatch) {
+                    const vlanId = vlanMatch[1];
+                    const suggestedIP = `192.168.${vlanId}.1/24`;
+                    if (!ipAddressInput.value) {
+                        ipAddressInput.value = suggestedIP;
+                    }
+                }
+            }
+        });
+    }
+});
+</script>
+{% endblock %}
